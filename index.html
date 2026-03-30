@@ -756,23 +756,20 @@ async function openDetail(id,type){
       const starsEl = document.getElementById("det-stars");
       const lblEl   = document.getElementById("det-rate-lbl");
       if (!starsEl) return;
-      const renderDetStars = () => {
+
+      function renderDetStars() {
         const cur = ratings[id] || 0;
         if (lblEl) lblEl.textContent = cur ? "Your rating" : "Tap to rate";
         starsEl.innerHTML = [1,2,3,4,5].map(n =>
           `<span style="font-size:28px;cursor:pointer;color:${cur>=n?"#FFD700":"rgba(255,255,255,.2)"};transition:color .15s;"
-            onclick="ratings[${id}]=${n};localStorage.setItem('sr_ratings',JSON.stringify(ratings));
-              const inWL=watchlist.find(w=>w.id===${id});
-              if(inWL){markSeen(${id},false);toast('★ Rated & moved to Seen It!');}
-              else{document.getElementById('det-rate-lbl').textContent='Your rating';
-              this.parentElement.querySelectorAll('span').forEach((s,i)=>{s.style.color=i<${n}?'#FFD700':'rgba(255,255,255,.2)';});}">★</span>`
+            onclick="rateFromDetail(${id},'${type}','${encodeURIComponent(title)}','${item.poster_path||""}','${date}',${n})">★</span>`
         ).join("");
-      };
+      }
       renderDetStars();
     })();
 
-    // Inject Cinemark button for movies
-    if (type === "movie") {
+    // Inject Cinemark button only when browsing Theaters
+    if (type === "movie" && svc === "theaters") {
       const actionsEl = document.getElementById("det-actions-end");
       if (actionsEl) {
         const btn = document.createElement("button");
@@ -1512,6 +1509,41 @@ function renderHomeSearchResults(items, q) {
   }).join("");
 }
 
+
+function rateFromDetail(id, type, titleEnc, poster, date, stars) {
+  const title = decodeURIComponent(titleEnc);
+  // Save rating
+  ratings[id] = stars;
+  localStorage.setItem("sr_ratings", JSON.stringify(ratings));
+
+  // Update star display
+  const starsEl = document.getElementById("det-stars");
+  const lblEl   = document.getElementById("det-rate-lbl");
+  if (starsEl) {
+    starsEl.querySelectorAll("span").forEach((s, i) => {
+      s.style.color = i < stars ? "#FFD700" : "rgba(255,255,255,.2)";
+    });
+  }
+  if (lblEl) lblEl.textContent = "Your rating";
+
+  // Add to Seen It regardless of watchlist status
+  const item = { id, type, title, poster, date };
+  const inWL   = watchlist.find(w => String(w.id) === String(id));
+  const inSeen = seenIt.find(s => String(s.id) === String(id));
+
+  if (inWL) {
+    // Remove from watchlist
+    watchlist = watchlist.filter(w => String(w.id) !== String(id));
+    localStorage.setItem("sr_wl", JSON.stringify(watchlist));
+  }
+
+  if (!inSeen) {
+    seenIt.push(item);
+    localStorage.setItem("sr_seen", JSON.stringify(seenIt));
+  }
+
+  toast("★".repeat(stars) + " Rated & saved to Seen It!");
+}
 
 // ── Android hardware back button ──────────────────────────────────────────
 // Push a state every time we navigate so the back button has something to pop
