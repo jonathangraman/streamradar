@@ -391,8 +391,8 @@ async function load() {
       const todayStr  = today.toISOString().slice(0,10);
       // Fetch now playing and coming soon separately, merge
       const [nowData, soonData] = await Promise.all([
-        api("/discover/movie?language=en-US&sort_by=popularity.desc&with_release_type=3&release_date.gte=" + pastStr + "&release_date.lte=" + todayStr + "&with_original_language=en&vote_count.gte=10&page=1"),
-        api("/discover/movie?language=en-US&sort_by=primary_release_date.asc&with_release_type=3&release_date.gte=" + todayStr + "&release_date.lte=" + futureStr + "&with_original_language=en&page=1")
+        api("/discover/movie?language=en-US&sort_by=popularity.desc&with_release_type=3&release_date.gte=" + pastStr + "&release_date.lte=" + todayStr + "&with_original_language=en&primary_release_date.gte=2024-01-01&vote_count.gte=10&page=1"),
+        api("/discover/movie?language=en-US&sort_by=primary_release_date.asc&with_release_type=3&release_date.gte=" + todayStr + "&release_date.lte=" + futureStr + "&with_original_language=en&primary_release_date.gte=2024-01-01&page=1")
       ]);
       const nowItems  = (nowData.results||[]).map(i=>({...i,_theaterStatus:"now"}));
       const soonItems = (soonData.results||[]).map(i=>({...i,_theaterStatus:"soon"}));
