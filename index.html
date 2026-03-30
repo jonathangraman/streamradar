@@ -701,10 +701,7 @@ async function openDetail(id,type){
           <button class="btn-ico ${wl?"wl-on":""}" id="btn-wl" onclick="toggleWL('${enc}')">🔖</button>
           <button class="btn-ico ${nt?"nt-on":""}" id="btn-nt" onclick="toggleNt(${id},'${title.replace(/'/g,"\\'")}','${date}')">${nt?"🔔":"🔕"}</button>
         </div>
-        \${type==="movie"?`<button onclick="window.open('https://www.cinemark.com/search#advanced?q=\${encodeURIComponent(title)}','_blank')"
-          style="width:100%;padding:13px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.3);color:#F5C518;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:-10px;">
-          🎟 Showtimes at Cinemark Legacy XD
-        </button>`:""}
+        \${type==="movie"?`<button onclick="window.open('https://www.cinemark.com/search#advanced?q='+encodeURIComponent(title),'_blank')" style="width:100%;padding:13px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.3);color:#F5C518;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:-10px;">🎟 Showtimes at Cinemark Legacy XD</button>`:""}
         ${genres.length?`<div class="sec-lbl">Genres</div><div class="genres">${genres.map(g=>`<div class="gtag">${g}</div>`).join("")}</div>`:""}
         <div class="sec-lbl">Where to Watch</div>
         <div class="provs">
