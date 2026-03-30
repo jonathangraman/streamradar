@@ -189,6 +189,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .apikey-save{padding:9px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .apikey-set{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.6);}
 .apikey-clear{color:var(--accent);background:none;border:none;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;}
+
+/* HOME SEARCH BAR */
+.home-search-bar{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:0 14px;margin-bottom:14px;transition:border-color .2s;}
+.home-search-bar.focused{border-color:rgba(232,76,76,.5);}
+.home-search-input{flex:1;background:none;border:none;outline:none;color:#fff;font-family:'DM Sans',sans-serif;font-size:15px;padding:13px 0;caret-color:var(--accent);}
+.home-search-input::placeholder{color:var(--text3);}
+.home-search-clear{background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;padding:4px;}
+/* Search result row style */
+.sr-row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;}
+.sr-row:active{opacity:.7;}
+.sr-row:last-child{border-bottom:none;}
+.sr-poster{width:44px;height:66px;border-radius:8px;overflow:hidden;background:var(--bg3);flex-shrink:0;}
+.sr-poster img{width:100%;height:100%;object-fit:cover;display:block;}
+.sr-info{flex:1;min-width:0;}
+.sr-title{font-size:14px;font-weight:700;color:#fff;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sr-year{font-size:11px;color:var(--text2);margin-bottom:5px;}
+.sr-services{display:flex;gap:5px;flex-wrap:wrap;}
+.sr-svc{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:800;letter-spacing:.03em;}
+.sr-svc.free{background:rgba(50,220,120,.15);border:1px solid rgba(50,220,120,.4);color:#32dc78;}
+.sr-not-streaming{font-size:11px;color:var(--text3);font-style:italic;}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .fu{animation:fadeUp .35s ease both;}
@@ -199,24 +219,45 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
   <div class="view" id="v-home">
     <div class="hdr">
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div>
           <div class="logo">STREAM<em>RADAR</em></div>
-          <div class="logo-sub">UPCOMING RELEASES</div>
+          <div class="logo-sub">WHAT'S STREAMING NOW</div>
         </div>
         <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#E84C4C,#9B2FC9);display:flex;align-items:center;justify-content:center;font-size:18px;">📡</div>
       </div>
-      <div class="tabs">
+      <div class="home-search-bar" id="home-search-bar" onclick="focusHomeSearch()">
+        <span style="font-size:16px;color:var(--text2);">🔍</span>
+        <input class="home-search-input" id="home-search-input" type="search"
+          placeholder="Search any movie or series..."
+          oninput="onHomeSearchInput()"
+          onfocus="onHomeSearchFocus()"
+          onblur="onHomeSearchBlur()"/>
+        <button class="home-search-clear" id="home-search-clear" onclick="clearHomeSearch()" style="display:none;">✕</button>
+      </div>
+      <div class="tabs" id="home-tabs">
         <button class="tab on" id="tab-movies" onclick="switchTab('movies')">Movies</button>
         <button class="tab" id="tab-series" onclick="switchTab('series')">Series</button>
       </div>
     </div>
     <div id="install-wrap"></div>
-    <div class="svcs-wrap"><div class="svcs" id="svcs"></div></div>
+    <div class="svcs-wrap" id="home-svcs-wrap"><div class="svcs" id="svcs"></div></div>
     <div class="divider"></div>
     <div class="row-meta">
       <span id="count-lbl">Loading...</span>
       <span style="color:var(--text3);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0;" id="meta-sublbl">Coming soon &amp; recent</span>
+    </div>
+    <div id="home-search-overlay" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:50;display:none;flex-direction:column;">
+      <div style="height:calc(var(--safe-top) + 130px);flex-shrink:0;"></div>
+      <div id="home-search-results-meta" style="padding:10px 20px 6px;color:var(--text2);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;display:none;"></div>
+      <div style="flex:1;overflow-y:auto;padding:0 20px 100px;">
+        <div id="home-search-results"></div>
+        <div id="home-search-hint" style="text-align:center;padding:60px 20px;color:var(--text2);">
+          <div style="font-size:40px;margin-bottom:12px;">🎬</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;">Search any title</div>
+          <div style="font-size:12px;line-height:1.6;">We'll show you which streaming<br/>services it's available on for free.</div>
+        </div>
+      </div>
     </div>
     <div class="grid-wrap"><div class="grid" id="grid"></div><div id="coming-soon-section" style="display:none;"></div></div>
   </div>
@@ -287,7 +328,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
     <button class="bnav-btn on" id="nav-home" onclick="goHome()"><span class="bnav-icon">🏠</span>HOME</button>
     <button class="bnav-btn" id="nav-wl"   onclick="goWatchlist()"><span class="bnav-icon">🔖</span>WATCHLIST</button>
     <button class="bnav-btn" id="nav-fy"   onclick="goForYou()"><span class="bnav-icon">🌟</span>FOR YOU</button>
-    <button class="bnav-btn" id="nav-search" onclick="goSearch()"><span class="bnav-icon">🔍</span>SEARCH</button>
   </nav>
 </div>
 <div class="toast" id="toast"></div>
@@ -344,11 +384,25 @@ async function load() {
       q = "/discover/" + type + "?language=en-US&sort_by=popularity.desc" + dateFilter + "&page=1";
     } else if (svc === "theaters") {
       const today = new Date();
-      const past = new Date(today); past.setMonth(past.getMonth() - 2);
-      const futureD = new Date(today); futureD.setMonth(futureD.getMonth() + 3);
+      const past = new Date(today); past.setDate(past.getDate() - 45); // now playing: last 45 days
+      const futureD = new Date(today); futureD.setDate(futureD.getDate() + 60); // opening soon: next 60 days
       const pastStr   = past.toISOString().slice(0,10);
       const futureStr = futureD.toISOString().slice(0,10);
-      q = "/discover/movie?language=en-US&sort_by=popularity.desc&with_release_type=2|3&release_date.gte=" + pastStr + "&release_date.lte=" + futureStr + "&page=1";
+      const todayStr  = today.toISOString().slice(0,10);
+      // Fetch now playing and coming soon separately, merge
+      const [nowData, soonData] = await Promise.all([
+        api("/discover/movie?language=en-US&sort_by=popularity.desc&with_release_type=3&release_date.gte=" + pastStr + "&release_date.lte=" + todayStr + "&with_original_language=en&vote_count.gte=10&page=1"),
+        api("/discover/movie?language=en-US&sort_by=primary_release_date.asc&with_release_type=3&release_date.gte=" + todayStr + "&release_date.lte=" + futureStr + "&with_original_language=en&page=1")
+      ]);
+      const nowItems  = (nowData.results||[]).map(i=>({...i,_theaterStatus:"now"}));
+      const soonItems = (soonData.results||[]).map(i=>({...i,_theaterStatus:"soon"}));
+      const seen = new Set();
+      const merged = [...nowItems,...soonItems].filter(i=>{
+        if(seen.has(i.id))return false; seen.add(i.id); return true;
+      });
+      results = nowItems.slice(0,20);
+      comingSoon = soonItems.slice(0,20);
+      loading=false; renderGrid(); return;
     } else {
       const svcObj = SVCS.find(s => s.id === svc);
       if (type === "tv" && svcObj && svcObj.net) {
@@ -508,16 +562,23 @@ function renderGrid(){
     const isRecentSeason = lastAirMs && (now - lastAirMs) < 60 * 24 * 60 * 60 * 1000;
     const showNewSeasonBadge = !isComingSoon && isOldShow && isRecentSeason && item.number_of_seasons > 1;
 
+    // Theater badges
+    const isTheaterSoon = svc==="theaters" && isComingSoon;
+    const isNowPlaying  = svc==="theaters" && !isComingSoon;
+    const theaterDate   = isTheaterSoon ? fd(baseDate) : null;
+
     return `<div class="card fu" style="animation-delay:${Math.min(i,6)*.04}s" onclick="openDetail(${item.id},'${mtype}')">
       <div class="card-img">
         ${item.poster_path?`<img src="${IMGW}${item.poster_path}" alt="" loading="lazy"/>`:`<div class="no-img">🎬</div>`}
-        ${isComingSoon
-          ? `<div class="badge-soon">S${nextSeason} SOON</div>`
-          : showNewSeasonBadge
-            ? `<div class="badge-soon" style="background:rgba(50,220,120,.95);color:#000;">NEW SEASON</div>`
-            : svc==="theaters"
-              ? `<div class="badge-soon" style="background:rgba(245,197,24,.95);">🎟 THEATER</div>`
-              : ""}
+        ${isTheaterSoon
+          ? `<div class="badge-soon" style="background:rgba(245,197,24,.95);color:#000;font-size:7px;padding:3px 5px;">🎟 ${theaterDate}</div>`
+          : isNowPlaying
+            ? `<div class="badge-soon" style="background:rgba(245,197,24,.95);color:#000;">🎟 IN THEATERS</div>`
+            : isComingSoon
+              ? `<div class="badge-soon">S${nextSeason} SOON</div>`
+              : showNewSeasonBadge
+                ? `<div class="badge-soon" style="background:rgba(50,220,120,.95);color:#000;">NEW SEASON</div>`
+                : ""}
         ${wl?`<div class="badge-wl">🔖</div>`:""}
         ${rating?`<div class="card-rating">★ ${rating}</div>`:""}
       </div>
@@ -534,8 +595,8 @@ function renderGrid(){
       csWrap.style.display = "block";
       csWrap.innerHTML = `
         <div style="padding:20px 0 8px;display:flex;align-items:center;gap:8px;">
-          <span style="color:#FFD700;font-size:14px;">🗓</span>
-          <span style="color:var(--text2);font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;">Coming Soon — New Seasons</span>
+          <span style="color:#FFD700;font-size:14px;">${svc==="theaters"?"🎟":"🗓"}</span>
+          <span style="color:var(--text2);font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;">${svc==="theaters"?"Opening Soon":"Coming Soon — New Seasons"}</span>
         </div>
         <div class="grid">${comingSoon.map((item,i) => makeCard(item, i, true)).join("")}</div>`;
     } else {
@@ -572,17 +633,16 @@ function switchTab(t){
 
 // Views
 function showView(name,back){
-  ["home","watchlist","foryou","search","detail","actor"].forEach(v=>{
+  ["home","watchlist","foryou","detail","actor"].forEach(v=>{
     const el=document.getElementById("v-"+v);
     if(el) el.classList.toggle("off-right",v!==name);
   });
   document.getElementById("nav-home").classList.toggle("on",name==="home");
   document.getElementById("nav-wl").classList.toggle("on",name==="watchlist");
-  document.getElementById("nav-search").classList.toggle("on",name==="search");
   const fyBtn=document.getElementById("nav-fy"); if(fyBtn) fyBtn.classList.toggle("on",name==="foryou");
   prevView=curView; curView=name;
 }
-function goHome(){ showView("home",true); }
+function goHome(){ clearHomeSearch(); showView("home",true); }
 function goWatchlist(){ showView("watchlist",false); renderWL(); }
 function goBack(){ showView(prevView,true); }
 
@@ -678,7 +738,7 @@ async function openActor(personId) {
   const savedPrev = prevView;
   prevView = curView;
   curView = "actor";
-  ["home","watchlist","foryou","search","detail","actor"].forEach(v=>{
+  ["home","watchlist","foryou","detail","actor"].forEach(v=>{
     const el=document.getElementById("v-"+v);
     if(el) el.classList.toggle("off-right", v!=="actor");
   });
@@ -873,12 +933,9 @@ let searchQuery = "";
 let searchResults = [];
 let searchLoading = false;
 
-function goSearch() {
-  showView("search", false);
-  document.getElementById("nav-home").classList.remove("on");
-  document.getElementById("nav-wl").classList.remove("on");
-  document.getElementById("nav-search").classList.add("on");
-  setTimeout(()=>document.getElementById("search-input").focus(), 350);
+// Home search is now inline — goSearch no longer needed
+function focusHomeSearch() {
+  document.getElementById("home-search-input").focus();
 }
 
 function onSearchFocus() { document.getElementById("search-bar").classList.add("focused"); }
