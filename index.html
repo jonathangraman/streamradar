@@ -148,7 +148,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .star-row{display:flex;gap:3px;margin-top:5px;}
 .star{font-size:16px;cursor:pointer;color:var(--text3);transition:color .15s;line-height:1;}
 .star.on{color:#FFD700;}
-.wl-card-wrap{display:flex;flex-direction:column;}
+.wl-card-wrap{display:flex;flex-direction:column;height:100%;}
+.wl-card-wrap .card{flex:1;display:flex;flex-direction:column;}
+.wl-card-wrap .card-img{aspect-ratio:2/3;flex-shrink:0;}
+.wl-card-wrap .card-body{flex:1;}
 .wl-card-rating{padding:4px 10px 8px;display:flex;flex-direction:column;gap:2px;}
 .wl-rate-lbl{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text2);text-transform:uppercase;}
 
@@ -175,6 +178,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .gen-btn{width:100%;padding:14px;background:linear-gradient(135deg,#E84C4C,#9B2FC9);color:#fff;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:16px;letter-spacing:.02em;}
 .gen-btn:disabled{opacity:.5;cursor:not-allowed;}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+/* API KEY PROMPT */
+.apikey-banner{margin:12px 20px 0;padding:12px 14px;background:rgba(232,76,76,.08);border:1px solid rgba(232,76,76,.25);border-radius:12px;}
+.apikey-banner p{font-size:12px;color:rgba(255,255,255,.7);margin-bottom:8px;line-height:1.5;}
+.apikey-banner a{color:var(--accent);text-decoration:none;font-weight:600;}
+.apikey-row{display:flex;gap:8px;}
+.apikey-input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:12px;outline:none;}
+.apikey-input:focus{border-color:rgba(232,76,76,.5);}
+.apikey-save{padding:9px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.apikey-set{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.6);}
+.apikey-clear{color:var(--accent);background:none;border:none;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .fu{animation:fadeUp .35s ease both;}
@@ -256,7 +270,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
       <div class="fy-title">FOR <em>YOU</em></div>
       <div class="fy-sub" id="fy-sub">Rate titles in your watchlist to get recommendations</div>
     </div>
-    <div class="divider" style="margin:0 0 0;"></div>
+    <div id="fy-apikey-wrap"></div>
+    <div class="divider" style="margin:0;"></div>
     <div class="fy-scroll" id="fy-scroll">
       <div id="fy-inner">
         <div class="fy-empty">
@@ -989,6 +1004,46 @@ function alertsInfo(){ const n=notifs.length; toast(n?`🔔 ${n} alert${n!==1?"s
 let ratings = {};
 try { ratings = JSON.parse(localStorage.getItem("sr_ratings") || "{}"); } catch(e) {}
 
+// Anthropic API key
+let anthropicKey = localStorage.getItem("sr_ak") || "";
+
+function renderApiKeyBanner() {
+  const wrap = document.getElementById("fy-apikey-wrap");
+  if (!wrap) return;
+  if (anthropicKey) {
+    wrap.innerHTML = `<div class="apikey-banner">
+      <div class="apikey-set">
+        <span>✅ API key saved</span>
+        <button class="apikey-clear" onclick="clearApiKey()">Remove key</button>
+      </div>
+    </div>`;
+  } else {
+    wrap.innerHTML = `<div class="apikey-banner">
+      <p>An Anthropic API key is required for recommendations.<br/>
+      Get one free at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></p>
+      <div class="apikey-row">
+        <input class="apikey-input" id="ak-input" type="password" placeholder="sk-ant-..."/>
+        <button class="apikey-save" onclick="saveApiKey()">Save</button>
+      </div>
+    </div>`;
+  }
+}
+
+function saveApiKey() {
+  const val = document.getElementById("ak-input")?.value.trim();
+  if (!val || !val.startsWith("sk-")) { toast("Enter a valid API key (starts with sk-)"); return; }
+  anthropicKey = val;
+  localStorage.setItem("sr_ak", val);
+  renderApiKeyBanner();
+  toast("✅ API key saved!");
+}
+
+function clearApiKey() {
+  anthropicKey = "";
+  localStorage.removeItem("sr_ak");
+  renderApiKeyBanner();
+}
+
 // For You
 let recs = [];
 let recsLoading = false;
@@ -996,6 +1051,7 @@ let recsLoading = false;
 function goForYou() {
   showView("foryou", false);
   document.getElementById("nav-fy").classList.add("on");
+  renderApiKeyBanner();
   renderForYou();
 }
 
@@ -1074,6 +1130,7 @@ async function searchAndOpen(title, type) {
 
 async function generateRecs() {
   const rated = watchlist.filter(w => ratings[w.id]);
+  if (!anthropicKey) { toast("Add your Anthropic API key first"); renderApiKeyBanner(); return; }
   if (rated.length < 3) { toast("Rate at least 3 titles first"); return; }
 
   recsLoading = true;
@@ -1107,6 +1164,8 @@ Return ONLY a JSON array with exactly 8 objects. No markdown, no explanation out
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true"
       },
       body: JSON.stringify({
