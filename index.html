@@ -148,12 +148,45 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .star-row{display:flex;gap:3px;margin-top:5px;}
 .star{font-size:16px;cursor:pointer;color:var(--text3);transition:color .15s;line-height:1;}
 .star.on{color:#FFD700;}
-.wl-card-wrap{display:flex;flex-direction:column;width:100%;}
-.wl-card-wrap .card{display:block;width:100%;}
-.wl-card-wrap .card-img{aspect-ratio:2/3;width:100%;position:relative;overflow:hidden;background:var(--bg3);}
-.wl-card-wrap .card-img img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
-.wl-card-wrap .card-body{padding:9px 10px;}
-#wl-grid, #seen-grid{align-items:start;grid-auto-rows:auto;}
+/* Watchlist grid — fixed row height so all cards identical */
+#wl-grid, #seen-grid{
+  grid-template-columns:repeat(3,1fr);
+  grid-auto-rows:1fr;
+  align-items:stretch;
+}
+.wl-card-wrap{
+  display:flex;
+  flex-direction:column;
+}
+.wl-card-wrap .card{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  border-radius:14px;
+  overflow:hidden;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  cursor:pointer;
+}
+.wl-card-wrap .card-img{
+  flex:0 0 auto;
+  position:relative;
+  width:100%;
+  padding-top:150%; /* fixed 2:3 aspect ratio */
+  overflow:hidden;
+  background:var(--bg3);
+}
+.wl-card-wrap .card-img img{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.wl-card-wrap .card-body{
+  padding:8px 9px 6px;
+}
 .wl-card-rating{padding:4px 10px 8px;display:flex;flex-direction:column;gap:2px;}
 .wl-rate-lbl{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text2);text-transform:uppercase;}
 
