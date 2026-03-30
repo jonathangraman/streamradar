@@ -151,8 +151,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 /* Watchlist grid — fixed row height so all cards identical */
 #wl-grid, #seen-grid{
   grid-template-columns:repeat(3,1fr);
-  grid-auto-rows:1fr;
-  align-items:stretch;
+  align-items:start;
 }
 .wl-card-wrap{
   display:flex;
@@ -176,22 +175,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
   overflow:hidden;
   background:var(--bg3);
 }
-.wl-card-wrap .card-img img,
-.wl-card-wrap .card-img .no-img,
-.wl-card-wrap .card-img .seen-badge,
-.wl-card-wrap .card-img > div {
+.wl-card-wrap .card-img img {
   position:absolute;
   inset:0;
   width:100%;
   height:100%;
   object-fit:cover;
+  display:block;
+}
+.wl-card-wrap .card-img .no-img {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
   display:flex;
   align-items:center;
   justify-content:center;
-}
-.wl-card-wrap .card-img img {
-  display:block;
-  object-fit:cover;
 }
 .wl-card-wrap .card-body{
   padding:8px 9px 4px;
@@ -1303,7 +1302,10 @@ function goForYou() {
 }
 
 function renderForYou() {
-  const rated = watchlist.filter(w => ratings[w.id]);
+  // Check ratings across both watchlist and seenIt
+  const allTracked = [...watchlist, ...seenIt];
+  const seen2 = new Set(); const allUniq = allTracked.filter(i=>{ if(seen2.has(i.id))return false; seen2.add(i.id); return true; });
+  const rated = allUniq.filter(w => ratings[w.id]);
   const sub = document.getElementById("fy-sub");
   const inner = document.getElementById("fy-inner");
 
@@ -1393,7 +1395,10 @@ function markRecSeen(idx) {
 }
 
 async function generateRecs() {
-  const rated = watchlist.filter(w => ratings[w.id]);
+  // Check ratings across both watchlist and seenIt
+  const allTracked = [...watchlist, ...seenIt];
+  const seen2 = new Set(); const allUniq = allTracked.filter(i=>{ if(seen2.has(i.id))return false; seen2.add(i.id); return true; });
+  const rated = allUniq.filter(w => ratings[w.id]);
   if (!anthropicKey) { toast("Add your Anthropic API key first"); renderApiKeyBanner(); return; }
   if (rated.length < 3) { toast("Rate at least 3 titles first"); return; }
 
@@ -1404,7 +1409,7 @@ async function generateRecs() {
   const liked    = rated.filter(w => ratings[w.id] >= 4).map(w => w.title + " (" + "★".repeat(ratings[w.id]) + ")");
   const neutral  = rated.filter(w => ratings[w.id] === 3).map(w => w.title);
   const disliked = rated.filter(w => ratings[w.id] <= 2).map(w => w.title + " (" + "★".repeat(ratings[w.id]) + ")");
-  const allTitles = watchlist.map(w => w.title);
+  const allTitles = [...watchlist, ...seenIt].map(w => w.title);
 
   const prompt = `You are a streaming content recommendation engine. Based on this user's ratings, recommend 8 movies or TV shows they haven't seen yet.
 
