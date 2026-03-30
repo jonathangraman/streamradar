@@ -391,7 +391,7 @@ async function load() {
       const todayStr  = today.toISOString().slice(0,10);
       // Fetch now playing and coming soon separately, merge
       const [nowData, soonData] = await Promise.all([
-        api("/discover/movie?language=en-US&sort_by=popularity.desc&with_release_type=3&release_date.gte=" + pastStr + "&release_date.lte=" + todayStr + "&with_original_language=en&primary_release_date.gte=2024-01-01&vote_count.gte=10&page=1"),
+        api("/discover/movie?language=en-US&sort_by=primary_release_date.desc&with_release_type=3&release_date.gte=" + pastStr + "&release_date.lte=" + todayStr + "&with_original_language=en&primary_release_date.gte=2024-01-01&vote_count.gte=10&page=1"),
         api("/discover/movie?language=en-US&sort_by=primary_release_date.asc&with_release_type=3&release_date.gte=" + todayStr + "&release_date.lte=" + futureStr + "&with_original_language=en&primary_release_date.gte=2024-01-01&page=1")
       ]);
       const nowItems  = (nowData.results||[]).map(i=>({...i,_theaterStatus:"now"}));
@@ -701,6 +701,10 @@ async function openDetail(id,type){
           <button class="btn-ico ${wl?"wl-on":""}" id="btn-wl" onclick="toggleWL('${enc}')">🔖</button>
           <button class="btn-ico ${nt?"nt-on":""}" id="btn-nt" onclick="toggleNt(${id},'${title.replace(/'/g,"\\'")}','${date}')">${nt?"🔔":"🔕"}</button>
         </div>
+        \${type==="movie"?`<button onclick="window.open('https://www.cinemark.com/search#advanced?q=\${encodeURIComponent(title)}','_blank')"
+          style="width:100%;padding:13px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.3);color:#F5C518;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:-10px;">
+          🎟 Showtimes at Cinemark Legacy XD
+        </button>`:""}
         ${genres.length?`<div class="sec-lbl">Genres</div><div class="genres">${genres.map(g=>`<div class="gtag">${g}</div>`).join("")}</div>`:""}
         <div class="sec-lbl">Where to Watch</div>
         <div class="provs">
