@@ -149,9 +149,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .star{font-size:16px;cursor:pointer;color:var(--text3);transition:color .15s;line-height:1;}
 .star.on{color:#FFD700;}
 /* Watchlist grid — fixed row height so all cards identical */
-#wl-grid, #seen-grid{
+#wl-grid{
   grid-template-columns:repeat(3,1fr);
   align-items:start;
+}
+#seen-grid{
+  grid-template-columns:repeat(4,1fr);
+  align-items:start;
+  gap:8px;
 }
 .wl-card-wrap{
   display:flex;
@@ -471,7 +476,7 @@ async function load() {
       if (type === "tv" && svcObj && svcObj.net) {
         // Exclude junk genres, English only, reasonable vote floor
         const excludeGenres = "10764,10763,10767,10766,10762"; // reality,news,talk,soap,kids
-        q = "/discover/tv?language=en-US&sort_by=popularity.desc&with_networks=" + svcObj.net
+        q = "/discover/tv?language=en-US&sort_by=first_air_date.desc&with_networks=" + svcObj.net
           + "&without_genres=" + excludeGenres
           + "&with_original_language=en"
           + "&vote_count.gte=50"
@@ -1337,9 +1342,11 @@ function renderForYou() {
     return;
   }
 
-  inner.innerHTML = genBtn + recs.map((r,i) => `
-    <div class="rec-card fu" style="animation-delay:${Math.min(i,5)*.06}s" onclick="searchAndOpen('${r.title.replace(/'/g,"\'")}','${r.type||"movie"}')">
-      <div class="rec-row">
+  inner.innerHTML = genBtn + recs    .map((r,i) => {
+      const recStars = ratings["rec_"+i] || 0;
+      const starRow = [1,2,3,4,5].map(n=>`<span style="font-size:20px;cursor:pointer;color:${recStars>=n?"#FFD700":"rgba(255,255,255,.2)"};" onclick="event.stopPropagation();rateRec(${i},${n})">★</span>`).join("");
+      return `<div class="rec-card fu" style="animation-delay:${Math.min(i,5)*.06}s">
+      <div class="rec-row" onclick="searchAndOpen('${r.title.replace(/'/g,"\'")}','${r.type||"movie"}',${i})">
         <div class="rec-poster" id="rec-poster-${i}">
           <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--text3);">🎬</div>
         </div>
@@ -1350,7 +1357,12 @@ function renderForYou() {
           <div class="rec-why">${r.reason}</div>
         </div>
       </div>
-    </div>`).join("");
+      <div style="display:flex;align-items:center;gap:8px;padding:0 12px 10px;">
+        <div style="display:flex;gap:3px;">${starRow}</div>
+        <button onclick="markRecSeen(${i})" style="margin-left:auto;padding:5px 10px;background:rgba(50,220,120,.1);border:1px solid rgba(50,220,120,.3);color:#32dc78;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;">✓ Seen It</button>
+      </div>
+    </div>`;
+    }).join("");
 
   // Load posters for recs in background
   recs.forEach((r, i) => loadRecPoster(r.title, r.type||"movie", i));
@@ -1367,8 +1379,10 @@ async function loadRecPoster(title, type, idx) {
   } catch(e) {}
 }
 
-async function searchAndOpen(title, type) {
+async function searchAndOpen(title, type, recIdx) {
   toast("🔍 Finding " + title + "...");
+  // Store rec index so detail page can mark it as seen when rated
+  window._currentRecIdx = (recIdx !== undefined) ? recIdx : -1;
   try {
     const d = await api("/search/" + type + "?query=" + encodeURIComponent(title) + "&page=1");
     const item = d.results?.[0];
@@ -1559,6 +1573,24 @@ function renderHomeSearchResults(items, q) {
 }
 
 
+function rateRec(idx, stars) {
+  ratings["rec_"+idx] = stars;
+  localStorage.setItem("sr_ratings", JSON.stringify(ratings));
+  // After rating, move to seen it and remove from recs
+  const r = recs[idx];
+  if (r) {
+    const item = {id: r._tmdbId||("rec_"+idx), type: r.type||"movie", title: r.title, poster: r._poster||"", date: r.year||""};
+    if (!seenIt.find(s => s.title === r.title)) {
+      seenIt.push(item);
+      localStorage.setItem("sr_seen", JSON.stringify(seenIt));
+    }
+    recs.splice(idx, 1);
+    localStorage.setItem("sr_recs", JSON.stringify(recs));
+    toast("★".repeat(stars) + " Rated & moved to Seen It!");
+    renderForYou();
+  }
+}
+
 function rateFromDetail(id, type, titleEnc, poster, date, stars) {
   const title = decodeURIComponent(titleEnc);
   // Save rating
@@ -1591,6 +1623,12 @@ function rateFromDetail(id, type, titleEnc, poster, date, stars) {
     localStorage.setItem("sr_seen", JSON.stringify(seenIt));
   }
 
+  // If this was opened from a rec card, remove it from recs
+  if (window._currentRecIdx >= 0 && window._currentRecIdx < recs.length) {
+    recs.splice(window._currentRecIdx, 1);
+    localStorage.setItem("sr_recs", JSON.stringify(recs));
+    window._currentRecIdx = -1;
+  }
   toast("★".repeat(stars) + " Rated & saved to Seen It!");
 }
 
