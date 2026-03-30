@@ -729,7 +729,10 @@ async function openDetail(id,type){
         const btn = document.createElement("button");
         btn.textContent = "🎟 Showtimes at Cinemark Legacy XD";
         btn.setAttribute("style","width:100%;padding:13px;margin-top:-10px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.3);color:#F5C518;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;");
-        btn.onclick = function(){ window.open('https://www.cinemark.com/search#advanced?q=' + encodeURIComponent(title), '_blank'); };
+        btn.onclick = function(){
+          // Link directly to the Legacy XD theater page — Cinemark has no reliable movie search URL
+          window.open('https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd', '_blank');
+        };
         actionsEl.parentNode.insertBefore(btn, actionsEl.nextSibling);
       }
     }
@@ -2001,7 +2004,10 @@ async function openDetail(id,type){
         const btn = document.createElement("button");
         btn.textContent = "🎟 Showtimes at Cinemark Legacy XD";
         btn.setAttribute("style","width:100%;padding:13px;margin-top:-10px;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.3);color:#F5C518;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;");
-        btn.onclick = function(){ window.open('https://www.cinemark.com/search#advanced?q=' + encodeURIComponent(title), '_blank'); };
+        btn.onclick = function(){
+          // Link directly to the Legacy XD theater page — Cinemark has no reliable movie search URL
+          window.open('https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd', '_blank');
+        };
         actionsEl.parentNode.insertBefore(btn, actionsEl.nextSibling);
       }
     }
