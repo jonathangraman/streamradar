@@ -8,17 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="description" content="StreamRadar – Upcoming streaming releases"/>
 <title>StreamRadar</title>
-<link rel="manifest" href="data:application/json;charset=utf-8,{
-  &quot;name&quot;: &quot;StreamRadar&quot;,
-  &quot;short_name&quot;: &quot;StreamRadar&quot;,
-  &quot;description&quot;: &quot;Track streaming releases&quot;,
-  &quot;start_url&quot;: &quot;/&quot;,
-  &quot;display&quot;: &quot;standalone&quot;,
-  &quot;background_color&quot;: &quot;#0a0c10&quot;,
-  &quot;theme_color&quot;: &quot;#0a0c10&quot;,
-  &quot;orientation&quot;: &quot;portrait&quot;,
-  &quot;icons&quot;: [{
-    &quot;src&quot;: &quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230a0c10'/><text y='.9em' font-size='80' x='10'>📡</text></svg>&quot;,
+<link rel="manifest" href="/manifest.json"/><text y='.9em' font-size='80' x='10'>📡</text></svg>&quot;,
     &quot;sizes&quot;: &quot;any&quot;,
     &quot;type&quot;: &quot;image/svg+xml&quot;,
     &quot;purpose&quot;: &quot;any maskable&quot;
@@ -1732,5 +1722,15 @@ renderSvcs();
 load();
 notifs.forEach(n=>schedNt(n.title,n.date));
 </script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(r => console.log('SW registered'))
+      .catch(e => console.log('SW failed:', e));
+  });
+}
+</script>
+
 </body>
 </html>
