@@ -8,6 +8,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="description" content="StreamRadar – Upcoming streaming releases"/>
 <title>StreamRadar</title>
+<link rel="manifest" href="data:application/json;charset=utf-8,{
+  &quot;name&quot;: &quot;StreamRadar&quot;,
+  &quot;short_name&quot;: &quot;StreamRadar&quot;,
+  &quot;description&quot;: &quot;Track streaming releases&quot;,
+  &quot;start_url&quot;: &quot;/&quot;,
+  &quot;display&quot;: &quot;standalone&quot;,
+  &quot;background_color&quot;: &quot;#0a0c10&quot;,
+  &quot;theme_color&quot;: &quot;#0a0c10&quot;,
+  &quot;orientation&quot;: &quot;portrait&quot;,
+  &quot;icons&quot;: [{
+    &quot;src&quot;: &quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230a0c10'/><text y='.9em' font-size='80' x='10'>📡</text></svg>&quot;,
+    &quot;sizes&quot;: &quot;any&quot;,
+    &quot;type&quot;: &quot;image/svg+xml&quot;,
+    &quot;purpose&quot;: &quot;any maskable&quot;
+  }]
+}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
@@ -403,6 +419,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 <script>
 const TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyNzk3M2IwY2U2OThkNTgxMzVjOTNkYWFiNzllZDkyYyIsIm5iZiI6MTc0OTU4NzQxNy4xNjIsInN1YiI6IjY4NDg5NWQ5ZjA5OTM4OTFlNDNmZDAxYiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GzamXyI-9bp6W_LnY98A3HlwLBjUK7uGm361tuJWCVo";
 const BASE  = "https://api.themoviedb.org/3";
+const MDBKEY = "89iqxw6s35nl9u1y5yigyack8";
 const IMGW  = "https://image.tmdb.org/t/p/w500";
 const IMGB  = "https://image.tmdb.org/t/p/w1280";
 
@@ -430,6 +447,15 @@ async function api(path) {
   const r = await fetch(BASE + path, {headers:{"Authorization":"Bearer "+TOKEN}});
   if (!r.ok) throw new Error("HTTP "+r.status);
   return r.json();
+}
+
+async function mdbFetch(tmdbId, type) {
+  const m = type === "movie" ? "movie" : "show";
+  const r = await fetch("https://mdblist.com/api/?apikey=" + MDBKEY + "&tm=" + tmdbId + "&m=" + m);
+  if (!r.ok) return null;
+  const d = await r.json();
+  if (d.error) return null;
+  return d;
 }
 
 // Load grid content
@@ -724,9 +750,10 @@ async function openDetail(id,type){
   document.getElementById("det-inner").innerHTML=`<div style="height:100vh;display:flex;align-items:center;justify-content:center;font-size:36px;">⏳</div>`;
   showView("detail",false);
   try{
-    const [item,prov]=await Promise.all([
+    const [item,prov,mdb]=await Promise.all([
       api(`/${type}/${id}?language=en-US&append_to_response=credits`),
-      api(`/${type}/${id}/watch/providers`)
+      api(`/${type}/${id}/watch/providers`),
+      mdbFetch(id, type).catch(()=>null)
     ]);
     const cast = (item.credits?.cast||[]).slice(0,20);
     const title=item.title||item.name||"Unknown";
@@ -740,6 +767,17 @@ async function openDetail(id,type){
     const numSeasons=item.number_of_seasons||null;
     const numEps=item.number_of_episodes||null;
     const genres=(item.genres||[]).map(g=>g.name);
+
+    // Parse MDBList ratings
+    const mdbRatings = mdb?.ratings || [];
+    const rtCritic   = mdbRatings.find(r => r.source === "tomatoes");
+    const rtAudience = mdbRatings.find(r => r.source === "tomatoesaudience");
+    const metacritic = mdbRatings.find(r => r.source === "metacritic");
+    const imdbRating = mdbRatings.find(r => r.source === "imdb");
+    const rtCriticVal   = rtCritic   ? rtCritic.value   + "%" : null;
+    const rtAudienceVal = rtAudience ? rtAudience.value + "%" : null;
+    const metaVal       = metacritic  ? metacritic.value       : null;
+    const imdbVal       = imdbRating  ? imdbRating.value + "/10" : null;
     const usProv=(prov.results?.US?.flatrate||[]);
     const wl=inWL(id);
     const nt=notifs.some(n=>n.id===id);
@@ -767,6 +805,29 @@ async function openDetail(id,type){
             <div style="color:#FFD700;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;">Season ${nextEpSeason} — Next Episode</div>
             <div style="color:rgba(255,255,255,.8);font-size:13px;font-weight:600;margin-top:2px;">${fd(nextEpDate)}</div>
           </div>
+        </div>`:""}
+        ${(rtCriticVal||rtAudienceVal||metaVal||imdbVal)?`
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+          ${rtCriticVal?`<div style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:rgba(250,70,70,.1);border:1px solid rgba(250,70,70,.25);border-radius:8px;">
+            <span style="font-size:14px;">🍅</span>
+            <div><div style="font-size:9px;color:rgba(255,255,255,.5);font-weight:700;letter-spacing:.06em;">TOMATOMETER</div>
+            <div style="font-size:14px;font-weight:800;color:#fa4646;">${rtCriticVal}</div></div>
+          </div>`:""}
+          ${rtAudienceVal?`<div style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:rgba(250,150,50,.1);border:1px solid rgba(250,150,50,.25);border-radius:8px;">
+            <span style="font-size:14px;">🍿</span>
+            <div><div style="font-size:9px;color:rgba(255,255,255,.5);font-weight:700;letter-spacing:.06em;">AUDIENCE</div>
+            <div style="font-size:14px;font-weight:800;color:#fa9632;">${rtAudienceVal}</div></div>
+          </div>`:""}
+          ${metaVal?`<div style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:rgba(50,180,50,.1);border:1px solid rgba(50,180,50,.25);border-radius:8px;">
+            <span style="font-size:14px;">Ⓜ️</span>
+            <div><div style="font-size:9px;color:rgba(255,255,255,.5);font-weight:700;letter-spacing:.06em;">METACRITIC</div>
+            <div style="font-size:14px;font-weight:800;color:#32b432;">${metaVal}</div></div>
+          </div>`:""}
+          ${imdbVal?`<div style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.25);border-radius:8px;">
+            <span style="font-size:14px;">⭐</span>
+            <div><div style="font-size:9px;color:rgba(255,255,255,.5);font-weight:700;letter-spacing:.06em;">IMDB</div>
+            <div style="font-size:14px;font-weight:800;color:#F5C518;">${imdbVal}</div></div>
+          </div>`:""}
         </div>`:""}
         <p class="det-overview">${item.overview||"No description available."}</p>
         <div class="det-actions">
