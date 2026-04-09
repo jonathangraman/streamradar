@@ -543,11 +543,11 @@ async function load() {
       q = "/discover/"+type+"?language=en-US&sort_by=popularity.desc"+df+"&page=1";
     } else if (svc==="theaters") {
       const today=new Date(), past=new Date(today), futureD=new Date(today);
-      past.setDate(past.getDate()-45); futureD.setDate(futureD.getDate()+60);
+      past.setDate(past.getDate()-45); futureD.setDate(futureD.getDate()+45);
       const todayStr=today.toISOString().slice(0,10), pastStr=past.toISOString().slice(0,10), futStr=futureD.toISOString().slice(0,10);
       const [nowData,soonData] = await Promise.all([
-        api("/discover/movie?language=en-US&sort_by=primary_release_date.desc&with_release_type=3&release_date.gte="+pastStr+"&release_date.lte="+todayStr+"&with_original_language=en&primary_release_date.gte=2024-01-01&vote_count.gte=10&page=1"),
-        api("/discover/movie?language=en-US&sort_by=primary_release_date.asc&with_release_type=3&release_date.gte="+todayStr+"&release_date.lte="+futStr+"&with_original_language=en&primary_release_date.gte=2024-01-01&page=1")
+        api("/discover/movie?language=en-US&sort_by=primary_release_date.desc&with_release_type=3&release_date.gte="+pastStr+"&release_date.lte="+todayStr+"&with_original_language=en&primary_release_date.gte="+pastStr+"&vote_count.gte=10&page=1"),
+        api("/discover/movie?language=en-US&sort_by=primary_release_date.asc&with_release_type=3&release_date.gte="+todayStr+"&release_date.lte="+futStr+"&with_original_language=en&primary_release_date.gte="+todayStr+"&page=1")
       ]);
       const nowItems=(nowData.results||[]).map(i=>({...i,_theaterStatus:"now"}));
       const soonItems=(soonData.results||[]).map(i=>({...i,_theaterStatus:"soon"}));
@@ -619,7 +619,7 @@ function makeCard(item, i, isComingSoon) {
   const nextSeason=item.next_episode_to_air?.season_number||null;
   const lastAir=item.last_air_date||"";
   const displayDate=isComingSoon&&nextEp?nextEp:baseDate;
-  const dateLabel=isComingSoon&&nextEp?"S"+nextSeason+" · "+fd(nextEp):nextEp&&!isComingSoon?"S"+nextSeason+" · "+fd(nextEp):fd(baseDate);
+  const dateLabel=isComingSoon&&nextEp?"S"+nextSeason+" · "+fd(nextEp):nextEp&&!isComingSoon?"S"+nextSeason+" · "+fd(nextEp):lastAir&&lastAir!==baseDate?"Latest: "+fd(lastAir):fd(baseDate);
   const rating=item.vote_average>0?item.vote_average.toFixed(1):null;
   const wl=inWL(item.id);
   const mtype=(tab==="movies"||svc==="theaters")?"movie":"tv";
@@ -627,7 +627,7 @@ function makeCard(item, i, isComingSoon) {
   const firstAirMs=baseDate?new Date(baseDate).getTime():0;
   const lastAirMs=lastAir?new Date(lastAir).getTime():0;
   const isOld=firstAirMs&&(now-firstAirMs)>365*24*60*60*1000;
-  const isRecent=lastAirMs&&(now-lastAirMs)<60*24*60*60*1000;
+  const isRecent=lastAirMs&&(now-lastAirMs)<180*24*60*60*1000;
   const newSeason=!isComingSoon&&isOld&&isRecent&&item.number_of_seasons>1;
   const isTheaterSoon=svc==="theaters"&&isComingSoon;
   const isNowPlaying=svc==="theaters"&&!isComingSoon;
@@ -637,6 +637,7 @@ function makeCard(item, i, isComingSoon) {
       ${isTheaterSoon?`<div class="badge-soon" style="background:rgba(245,197,24,.95);color:#000;font-size:7px;">🎟 ${fd(baseDate)}</div>`:isNowPlaying?`<div class="badge-soon" style="background:rgba(245,197,24,.95);color:#000;">🎟 NOW</div>`:isComingSoon?`<div class="badge-soon">S${nextSeason} SOON</div>`:newSeason?`<div class="badge-soon" style="background:rgba(50,220,120,.95);color:#000;">NEW SEASON</div>`:""}
       ${wl?`<div class="badge-wl">🔖</div>`:""}
       ${rating?`<div class="card-rating">★ ${rating}</div>`:""}
+      ${(()=>{const gs=item.genre_ids||[];const isDoc=gs.includes(99);const isStandup=gs.includes(35)&&/stand.?up|comedy special|stand up/i.test(title);return isDoc?`<div style="position:absolute;top:6px;right:6px;background:rgba(100,180,255,.9);color:#000;font-size:8px;font-weight:800;padding:2px 5px;border-radius:4px;">DOC</div>`:isStandup?`<div style="position:absolute;top:6px;right:6px;background:rgba(255,180,50,.9);color:#000;font-size:8px;font-weight:800;padding:2px 5px;border-radius:4px;">STAND-UP</div>`:""})()}
     </div>
     <div class="card-body"><div class="card-title">${title}</div><div class="card-date">${dateLabel}</div></div>
   </div>`;
