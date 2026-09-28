@@ -44,7 +44,7 @@ test('a returning series ranks by its new episode or season rather than its orig
 test('theatrical browsing separates current wide releases from upcoming US releases',()=>{
  const now=catalogQuery({service:'theaters'},'2026-09-28'),soon=catalogQuery({service:'theaters',when:'soon'},'2026-09-28');
  assert.equal(now.get('region'),'US');assert.equal(now.get('with_release_type'),'3');assert.equal(now.get('release_date.lte'),'2026-09-28');assert.equal(now.has('watch_region'),false);assert.equal(now.get('sort_by'),'popularity.desc');
- assert.equal(soon.get('release_date.gte'),'2026-09-29');assert.equal(soon.get('release_date.lte'),'2026-12-27');assert.equal(soon.get('sort_by'),'release_date.asc');
+ assert.equal(soon.get('release_date.gte'),'2026-09-29');assert.equal(soon.get('release_date.lte'),'2026-12-27');assert.equal(soon.get('sort_by'),'popularity.desc');assert.equal(soon.get('primary_release_date.gte'),'2026-04-01');assert.equal(soon.get('with_original_language'),'en');
  assert.equal(legacyTheater.url,'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd');
 });
 test('network filters require both HBO availability and the requested original network',()=>{

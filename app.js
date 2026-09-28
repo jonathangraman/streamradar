@@ -270,7 +270,7 @@ document.addEventListener('click',async event=>{
     if(a==='detail')showRoute({view:'detail',key});else if(a==='actor')showRoute({view:'actor',id:Number(b.dataset.id)});
     else if(['home','watchlist','foryou','about'].includes(a))showRoute({view:a});else if(a==='back')goBack();
     else if(['watch','seen','remove-seen','rate','dismiss'].includes(a))mutate(a,key,Number(b.dataset.stars));
-    else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';if(kind==='tv')kind='movie';}renderServices();loadCatalog();}
+    else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';kind='movie';}renderServices();loadCatalog();}
     else if(a==='type'){type=b.dataset.type;renderServices();loadCatalog();}
     else if(a==='clear-search')clearSearch();else if(a==='retry-search')search($('home-search-input').value.trim());
     else if(a==='retry-catalog')loadCatalog();else if(a==='more'&&!loading)loadCatalog(true);

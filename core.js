@@ -50,7 +50,10 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
   if(service==='theaters'){
     params.set('region','US');params.set('with_release_type','3');
     params.set('release_date.gte',shiftedDate(now,when==='soon'?1:-42));params.set('release_date.lte',shiftedDate(now,when==='soon'?90:0));
-    params.set('sort_by',when==='soon'?'release_date.asc':'popularity.desc');
+    // Date-only ranking buries recognized releases behind low-information entries.
+    // Select popular theatrical candidates, then order them by verified US date in the UI.
+    params.set('sort_by','popularity.desc');
+    if(when==='soon')params.set('primary_release_date.gte',shiftedDate(now,-180));
   }else if(when==='soon'){
     const field=type==='tv'?'first_air_date':'primary_release_date';
     params.set(field+'.gte',shiftedDate(now,1));params.set(field+'.lte',shiftedDate(now,90));params.set('sort_by',field+'.asc');
