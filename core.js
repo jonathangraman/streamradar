@@ -1,4 +1,5 @@
 export const keyOf = (item) => `${item.type || item.media_type}:${item.id}`;
+export const isEnglish = item => item?.original_language === 'en';
 export function parseRoute(hash){
   const match=/^#detail\/(movie|tv):(\d+)$/.exec(hash);if(match&&Number(match[2])>0)return {view:'detail',key:match[1]+':'+match[2]};
   const actor=/^#actor\/(\d+)$/.exec(hash);if(actor&&Number(actor[1])>0)return {view:'actor',id:Number(actor[1])};
@@ -45,7 +46,7 @@ export const networkIds={food:'143',discovery:'64'};
 export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330',max:'49|3186',starz:'318'};
 export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
 export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',page=1,ids=[]},now=today()){
-  const params=new URLSearchParams({language:'en-US',page});
+  const params=new URLSearchParams({language:'en-US',with_original_language:'en',page});
   if(service==='theaters'){
     params.set('region','US');params.set('with_release_type','3');
     params.set('release_date.gte',shiftedDate(now,when==='soon'?1:-42));params.set('release_date.lte',shiftedDate(now,when==='soon'?90:0));

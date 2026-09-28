@@ -11,10 +11,13 @@ export default async function handler(req,res) {
   const page=Number(target.searchParams.get('page')||1);if(!Number.isInteger(page)||page<1||page>500)return res.status(400).json({error:'Invalid page'});
   if(target.searchParams.has('append_to_response'))target.searchParams.set('append_to_response','credits,keywords');
   target.searchParams.set('include_adult','false');
+  if(path.startsWith('/discover/'))target.searchParams.set('with_original_language','en');
   try {
     const upstream=await fetch(target,{headers:{Authorization:'Bearer '+process.env.TMDB_READ_TOKEN},signal:AbortSignal.timeout(10000)});
     if(!upstream.ok)return res.status(upstream.status===429?429:502).json({error:upstream.status===429?'Catalog is busy. Please retry shortly.':'Catalog is temporarily unavailable.'});
     const data=await upstream.json();
+    if(path.startsWith('/search/')||path.endsWith('/recommendations')||path.startsWith('/discover/'))data.results=(data.results||[]).filter(item=>item.original_language==='en');
+    if(path.endsWith('/combined_credits'))data.cast=(data.cast||[]).filter(item=>item.original_language==='en');
     res.setHeader('Cache-Control',path.startsWith('/search/')?'private, max-age=60':'public, s-maxage=900, stale-while-revalidate=300');
     return res.status(200).json({...data,_fetchedAt:new Date().toISOString()});
   }catch{return res.status(504).json({error:'Catalog request timed out. Please retry.'});}

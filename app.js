@@ -1,4 +1,4 @@
-import {keyOf,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {keyOf,isEnglish,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -93,7 +93,7 @@ async function loadCatalog(more=false){
         const updates=await api(`/discover/tv?${recent}`);
         data.results=[...(updates.results||[]),...(data.results||[])];data.total_pages=Math.max(data.total_pages||1,updates.total_pages||1);
       }
-      return {...data,results:(data.results||[]).map(x=>normalize(x,media))};
+      return {...data,results:(data.results||[]).filter(isEnglish).map(x=>normalize(x,media))};
     }));
     if(!sequence.current(request))return;
     const data={total_pages:Math.max(...batches.map(d=>d.total_pages||1)),results:batches.flatMap(d=>d.results||[])};
@@ -121,7 +121,7 @@ async function loadCatalog(more=false){
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.date||'').localeCompare(b.theaterDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
     $('grid').innerHTML=results.map(card).join('')||'<div class="empty">No announced titles match these filters. Try All titles or another service; schedules may not yet be listed.</div>';
-    $('count-lbl').textContent=`${results.length} titles · US · ${wanted.when==='soon'?'Upcoming premieres · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    $('count-lbl').textContent=`${results.length} titles · English · US · ${wanted.when==='soon'?'Upcoming premieres · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     $('load-more').hidden=page>=totalPages;
     enrichLabels(results,request);
   }catch(e){if(sequence.current(request)){$('grid').innerHTML=errorHTML(e.message,'retry-catalog');$('count-lbl').textContent='Catalog unavailable';}}
@@ -147,10 +147,10 @@ function onSearch(){
 async function search(q){
   const request=sequence.next();searchController=new AbortController();const signal=searchController.signal;
   try{
-    const parts=await Promise.all(['movie','tv'].map(async t=>{const d=await api(`/search/${t}?query=${encodeURIComponent(q)}&page=1`,{signal});return (d.results||[]).map(x=>normalize(x,t)).filter(Boolean);}));
+    const parts=await Promise.all(['movie','tv'].map(async t=>{const d=await api(`/search/${t}?query=${encodeURIComponent(q)}&page=1`,{signal});return (d.results||[]).filter(isEnglish).map(x=>normalize(x,t)).filter(Boolean);}));
     if(!sequence.current(request))return;
     const found=parts.flat().sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,30);
-    $('count-lbl').textContent=`${found.length} top matches · ${region}`;
+    $('count-lbl').textContent=`${found.length} English matches · ${region}`;
     $('grid').innerHTML=found.map(item=>{remember(item);return `<button class="search-result" data-action="detail" data-key="${keyOf(item)}">${poster(item)}<span class="info"><strong>${esc(item.title)}</strong><span class="data-note">${esc(item.date.slice(0,4)||'Year unknown')} · ${item.type==='tv'?'Series':'Movie'}</span><span class="card-tags">${tags(item)}</span><p id="offers-${keyOf(item).replace(':','-')}">Checking offers…</p></span></button>`;}).join('')||'<div class="empty">No matching titles. Try another title or spelling.</div>';
     await mapLimit(found,4,async item=>{
       let text;try{const d=await api(`/${item.type}/${item.id}/watch/providers`,{signal}),offer=d.results?.[region];
@@ -212,7 +212,7 @@ async function loadScores(item,request){
 async function loadActor(id){
   const request=actorSequence.next();$('actor-inner').innerHTML='<button class="back-control" data-action="back">‹ Back</button><div class="loading">Loading actor…</div>';$('actor-inner').scrollTop=0;
   try{const [person,credits]=await Promise.all([api(`/person/${Number(id)}`),api(`/person/${Number(id)}/combined_credits`)]);if(!actorSequence.current(request))return;
-    const films=[...new Map((credits.cast||[]).map(x=>normalize(x,x.media_type)).filter(Boolean).map(x=>[keyOf(x),x])).values()].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const films=[...new Map((credits.cast||[]).filter(isEnglish).map(x=>normalize(x,x.media_type)).filter(Boolean).map(x=>[keyOf(x),x])).values()].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     $('actor-inner').innerHTML=`<button class="back-control" data-action="back">‹ Back</button><section class="person-header"><div class="person-portrait">${image(person.profile_path,'w342')?`<img src="${image(person.profile_path,'w342')}" alt="${esc(person.name)}">`:'<span aria-hidden="true">🎭</span>'}</div><div><p class="person-eyebrow">${esc(person.known_for_department||'Film & television')}</p><h1 tabindex="-1">${esc(person.name)}</h1>${person.birthday?`<p class="person-fact">Born ${esc(formatDate(person.birthday))}</p>`:''}${person.place_of_birth?`<p class="person-fact">${esc(person.place_of_birth)}</p>`:''}<p class="person-fact">${films.length} screen credits</p></div></section><details class="actor-summary"><summary>Biography</summary><p>${esc(person.biography||'No biography available.')}</p></details><h2 class="sec-lbl">Filmography <span class="section-hint">Newest first</span></h2><div class="grid">${films.map(card).join('')}</div>`;$('actor-inner').querySelector('h1').focus({preventScroll:true});
   }catch(e){if(actorSequence.current(request))$('actor-inner').innerHTML='<button class="back-control" data-action="back">‹ Back</button>'+errorHTML(e.message,'retry-actor');}
 }
@@ -223,7 +223,7 @@ function renderWatchlist(){
 }
 function renderForYou(){
   const seeds=[...library.seen,...library.watchlist].filter(x=>library.ratings[keyOf(x)]>=4);
-  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label></div><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button><p class="data-note">${seeds.length?'Related to your 4–5-star ratings, with matching streaming discoveries.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Filters apply when you refresh. Not interested choices stay saved on this browser.</p>`+library.recs.filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
+  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label></div><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button><p class="data-note">${seeds.length?'Related to your 4–5-star ratings, with matching streaming discoveries.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Filters apply when you refresh. Not interested choices stay saved on this browser.</p>`+library.recs.filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
     const saved=library.watchlist.some(x=>keyOf(x)===keyOf(item));
     return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
   }).join('');
@@ -238,18 +238,18 @@ async function recommend(){
   try{
     const seeds=[...library.seen,...library.watchlist].filter(x=>library.ratings[keyOf(x)]>=4&&(chosenMedia==='all'||x.type===chosenMedia)).slice(0,5);
     const excluded=new Set([...library.watchlist,...library.seen].map(keyOf).concat(library.dismissed||[]));
-    const batches=await mapLimit(seeds,3,async seed=>{const d=await api(`/${seed.type}/${seed.id}/recommendations`);return (d.results||[]).map(x=>({...normalize(x,seed.type),reason:'Because you liked '+seed.title}));});
+    const batches=await mapLimit(seeds,3,async seed=>{const d=await api(`/${seed.type}/${seed.id}/recommendations`);return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,seed.type),reason:'Because you liked '+seed.title}));});
     let related=batches.filter(Array.isArray).flat();
     if(chosenGenre==='indie')related=[];
     const types=chosenMedia==='all'?['movie','tv']:[chosenMedia];
     const discoveries=await mapLimit(types,2,async media=>{
-      const p=new URLSearchParams({language:'en-US',watch_region:'US',with_watch_monetization_types:'flatrate|free|ads',sort_by:'popularity.desc',page:'1'});
+      const p=new URLSearchParams({language:'en-US',with_original_language:'en',watch_region:'US',with_watch_monetization_types:'flatrate|free|ads',sort_by:'popularity.desc',page:'1'});
       p.set(media==='tv'?'first_air_date.lte':'primary_release_date.lte',today());
       const providers=await api(`/watch/providers/${media}?watch_region=US`);p.set('with_watch_providers',providerIds(providers.results||[],'all').join('|'));
       const keyword=pickKeyword(chosenGenre,media);
       if(keyword)p.set('with_keywords',keyword);else if(chosenGenre!=='all')p.set('with_genres',pickGenreIds(chosenGenre,media));
       const d=await api(`/discover/${media}?${p}`);
-      return (d.results||[]).map(x=>({...normalize(x,media),...(keyword?{keywords:{keywords:[{id:keyword}]}}:{}),reason:'A US streaming discovery matching your filters.'}));
+      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,media),...(keyword?{keywords:{keywords:[{id:keyword}]}}:{}),reason:'A US streaming discovery matching your filters.'}));
     });
     if(discoveries.every(x=>x._error)&&!related.length)throw new Error('Picks are temporarily unavailable. Please retry.');
     const prior=new Set(library.recs.map(keyOf));

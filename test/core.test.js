@@ -5,8 +5,14 @@ import vm from 'node:vm';
 import {contentLabels,newestFirst,discoveryOrder} from '../core.js';
 import {catalogQuery,shiftedDate,legacyTheater,activityDate,recentActivityFirst} from '../core.js';
 import {matchesPick,pickKeyword} from '../core.js';
+import {isEnglish} from '../core.js';
 import {keyOf,parseRoute,normalize,escapeHTML,formatDate,isStandup,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,providerIds} from '../core.js';
 const movie={id:161,type:'movie',title:"Ocean's Eleven",date:'2001-12-07'};
+test('English-only uses original language, never translated title or country',()=>{
+ assert(isEnglish({original_language:'en',origin_country:['GB']}));
+ assert(!isEnglish({title:'An English title',original_language:'ko'}));assert(!isEnglish({title:'Unknown language'}));
+ for(const service of ['all','apple','theaters'])for(const type of ['movie','tv'])for(const when of ['now','soon'])assert.equal(catalogQuery({service,type,when}).get('with_original_language'),'en');
+});
 test('not interested persists canonical identity without affecting a different media type',()=>{
  const initial={...emptyLibrary(),recs:[movie,{...movie,type:'tv'}]};
  const next=updateLibrary(initial,'dismiss',movie);assert.deepEqual(next.dismissed,['movie:161']);assert.equal(next.recs.length,1);assert.equal(next.recs[0].type,'tv');assert.deepEqual(JSON.parse(JSON.stringify(next)).dismissed,['movie:161']);
