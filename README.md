@@ -32,6 +32,8 @@ Preview checks: home, search `Ocean's Eleven`, save/rate/reload, actor/back navi
 
 ## Data integrations and limitations
 
+Discovery, Coming Soon, Theaters, search, actor filmographies and For You display only titles whose TMDB original language is English (`en`). Translated titles, English subtitles or dubs do not qualify. Unknown-language results are excluded. Existing saved library records are retained. Discovery filters at the source, and other lists filter their returned results; search pages may therefore contain fewer matches.
+
 Watch Now discovery uses US availability. Show includes All titles, Movies, Series, Documentaries and Stand-up. It combines recent-airing series candidates with premiere-sorted discovery results, hydrates episode/season metadata and ranks loaded titles by latest aired episode/season or original movie release. Loading more expands the candidate set and re-sorts it; this is not an exhaustive global sort by service arrival date. Search retains relevance ranking; watchlists and actor credits are newest first.
 
 Coming Soon combines movies and series (or the selected Show category) over the next 90 days. Service-specific TV results use verified original-network affiliations; Apple movies use Apple Studios (194232). Other service movie results require provider metadata, which is sparse before release. All titles is a general upcoming-premiere list. These are original premiere dates, not a comprehensive schedule of streaming arrivals or a promise of future US availability. Dates can change.
