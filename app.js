@@ -286,7 +286,7 @@ document.addEventListener('click',async event=>{
 $('home-search-input').addEventListener('input',onSearch);
 $('home-search-input').addEventListener('keydown',e=>{if(e.key==='Escape'){clearSearch();}if(e.key==='Enter'){clearTimeout(searchTimer);search($('home-search-input').value.trim());}});
 
-$('when').addEventListener('change',()=>{when=$('when').value;network='all';if(when==='soon'&&['movie','tv'].includes(kind))kind='all';renderServices();loadCatalog();});
+$('when').addEventListener('change',()=>{when=$('when').value;network='all';if(when==='soon'&&service!=='theaters'&&['movie','tv'].includes(kind))kind='all';renderServices();loadCatalog();});
 $('network').addEventListener('change',()=>{network=$('network').value;if(network!=='all'){type='tv';kind='tv';}renderServices();loadCatalog();});
 $('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
