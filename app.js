@@ -1,4 +1,4 @@
-import {originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -74,7 +74,8 @@ function renderServices(){
   const selected=$('svcs').querySelector('.on');if(selected)$('svcs').parentElement.scrollLeft=Math.max(0,selected.offsetLeft-20);
   document.querySelectorAll('[data-action="type"]').forEach(b=>{const on=b.dataset.type===type;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.disabled=(service==='theaters'&&b.dataset.type==='tv')||(service==='max'&&network!=='all'&&when==='now'&&b.dataset.type==='movie');});
 }
-function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${tags(item,'poster')}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate(item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
+function posterTags(item){return tags(item,'poster')+(when==='soon'&&item.upcomingSeason>1?`<span class="content-tag tag-season">SEASON ${Number(item.upcomingSeason)} SOON</span>`:'');}
+function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${posterTags(item)}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${when==='soon'&&item.upcomingDate?'Expected':item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate((when==='soon'&&item.upcomingDate)||item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
 async function loadCatalog(more=false){
   const request=sequence.next(),wanted={type,service,region,kind,when,network,page:more?page+1:1};loading=true;
   searchController?.abort();if(!more){page=1;results=[];$('grid').innerHTML='<div class="loading" role="status">Loading titles…</div>';}
@@ -93,6 +94,10 @@ async function loadCatalog(more=false){
         const updates=await api(`/discover/tv?${recent}`);
         data.results=[...(updates.results||[]),...(data.results||[])];data.total_pages=Math.max(data.total_pages||1,updates.total_pages||1);
       }
+      if(media==='tv'&&wanted.when==='soon'){
+        const returning=await api('/discover/tv?'+upcomingSeasonQuery({...wanted,ids}));
+        data.results=[...(data.results||[]),...(returning.results||[])];data.total_pages=Math.max(data.total_pages||1,returning.total_pages||1);
+      }
       return {...data,results:(data.results||[]).filter(isEnglish).map(x=>normalize(x,media))};
     }));
     if(!sequence.current(request))return;
@@ -108,14 +113,15 @@ async function loadCatalog(more=false){
       });
       if(!sequence.current(request))return;
     }
-    if(originalsOnlyServices.includes(wanted.service)||wanted.kind==='movie'||(types.includes('tv')&&wanted.when==='now')){
+    if(originalsOnlyServices.includes(wanted.service)||wanted.kind==='movie'||types.includes('tv')){
       $('count-lbl').textContent=wanted.kind==='movie'?'Checking movie categories…':'Checking latest season and episode dates…';
       incoming=await mapLimit(incoming,4,async item=>{
         if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'&&!originalMovieServices.includes(wanted.service)))return item;
-        try{return {...item,...normalize(await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`),item.type)};}catch{if(originalsOnlyServices.includes(wanted.service))throw new Error('Could not verify originals. Please retry.');return item;}
+        try{return {...item,...normalize(await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`),item.type)};}catch{if(wanted.when==='soon')throw new Error('Could not check upcoming dates. Please retry.');if(originalsOnlyServices.includes(wanted.service))throw new Error('Could not verify originals. Please retry.');return item;}
       });
       if(!sequence.current(request))return;
     }
+    if(incoming.some(item=>item?._error))throw new Error(incoming.find(item=>item?._error)._error);
     if(originalsOnlyServices.includes(wanted.service)){
       incoming=await mapLimit(incoming,4,async item=>{
         if(item.type==='tv')return isOriginalSeries(item,wanted.service)?item:null;
@@ -125,13 +131,16 @@ async function loadCatalog(more=false){
       if(!sequence.current(request))return;
       incoming=incoming.filter(Boolean);
     }
+    if(wanted.when==='soon'){
+      incoming=incoming.map(item=>{if(item.type!=='tv')return item;const premiere=upcomingPremiere(item);return premiere?{...item,upcomingDate:premiere.date,upcomingSeason:premiere.season}:null;}).filter(Boolean);
+    }
     if(wanted.kind==='standup')incoming=incoming.map(x=>({...x,keywords:{keywords:[{id:9716,name:'stand-up comedy'}]}}));
     if(wanted.kind==='movie')incoming=incoming.filter(isNarrativeMovie);
     page=wanted.page;totalPages=Math.min(data.total_pages||1,500);results=[...new Map([...results,...incoming].map(x=>[keyOf(x),x])).values()];
-    if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.date||'').localeCompare(b.theaterDate||b.date||''));
+    if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
-    $('grid').innerHTML=results.map(card).join('')||'<div class="empty">No announced titles match these filters. Try All titles or another service; schedules may not yet be listed.</div>';
-    $('count-lbl').textContent=`${results.length} titles · English · US · ${originalsOnlyServices.includes(wanted.service)?(originalMovieServices.includes(wanted.service)?'Originals only · ':'Original series only · '):''}${wanted.when==='soon'?'Upcoming premieres · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    $('grid').innerHTML=results.map(card).join('')||'<div class="empty">No dated premieres match these filters. Upcoming dates may not be announced or listed yet.</div>';
+    $('count-lbl').textContent=`${results.length} titles · English · US · ${originalsOnlyServices.includes(wanted.service)?(originalMovieServices.includes(wanted.service)?'Originals only · ':'Original series only · '):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     $('load-more').hidden=page>=totalPages;
     enrichLabels(results,request);
   }catch(e){if(sequence.current(request)){$('grid').innerHTML=errorHTML(e.message,'retry-catalog');$('count-lbl').textContent='Catalog unavailable';}}
@@ -145,7 +154,7 @@ async function enrichLabels(titles,request){
     const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres,last_episode_to_air:detail.last_episode_to_air,next_episode_to_air:detail.next_episode_to_air});
     const node=$('grid').querySelector(`[data-key="${keyOf(item)}"] .card-tags`);
     if(node)node.innerHTML=tags(enriched,'body');
-    const overlay=$('grid').querySelector(`[data-key="${keyOf(item)}"] .poster-tags`);if(overlay)overlay.innerHTML=tags(enriched,'poster');
+    const overlay=$('grid').querySelector(`[data-key="${keyOf(item)}"] .poster-tags`);if(overlay)overlay.innerHTML=posterTags(enriched);
   });
 }
 function clearSearch(){clearTimeout(searchTimer);searchController?.abort();sequence.next();$('home-search-input').value='';$('home-search-clear').hidden=true;$('browse-controls').hidden=false;$('home-tabs').hidden=false;renderServices();loadCatalog();$('home-search-input').focus();}

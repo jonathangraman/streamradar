@@ -152,3 +152,23 @@ test('movie originals require first-release evidence, never provider availabilit
  assert(isOriginalMovie(item([release(2,'2026-09-01'),release(4,'2026-09-12','Prime Video')]),'prime'));
  assert(!isOriginalMovie(item([release(2,'2026-01-01'),release(4,'2026-09-12','Prime Video')]),'prime'));
 });
+
+import {upcomingPremiere,upcomingSeasonQuery} from '../core.js';
+test('MGM+ upcoming uses MGM+/Epix networks rather than existing subscription offers',()=>{
+ const q=catalogQuery({service:'mgm',type:'tv',when:'soon',ids:[34]});
+ assert.equal(q.get('with_networks'),'6219|922');assert(!q.has('with_watch_providers'));
+});
+test('upcoming season discovery retains network and pagination without requiring a new series',()=>{
+ const q=upcomingSeasonQuery({service:'starz',page:2},'2026-09-28');
+ assert.equal(q.get('with_networks'),'318');assert.equal(q.get('page'),'2');assert(!q.has('first_air_date.gte'));
+ assert.equal(q.get('first_air_date.lte'),'2026-09-28');assert.equal(q.get('air_date.gte'),'2026-09-29');assert.equal(q.get('air_date.lte'),'2026-12-27');
+ assert(!q.has('with_watch_providers'));assert.equal(q.get('with_original_language'),'en');
+});
+test('upcoming titles rank by a future season premiere, excluding ordinary episodes and undated seasons',()=>{
+ const now='2026-09-28',item={first_air_date:'2020-07-12',seasons:[{season_number:3,air_date:'2026-12-04'}]};
+ assert.deepEqual(upcomingPremiere(item,now),{date:'2026-12-04',season:3});
+ assert.deepEqual(upcomingPremiere({first_air_date:'2026-10-11',seasons:[{season_number:1,air_date:'2026-10-10'}]},now),{date:'2026-10-11',season:1});
+ assert.equal(upcomingPremiere({first_air_date:'2020-01-01',next_episode_to_air:{season_number:2,episode_number:3,air_date:'2026-10-02'}},now),null);
+ for(const air_date of ['',now,'2026-12-28'])assert.equal(upcomingPremiere({first_air_date:'2020-01-01',seasons:[{season_number:2,air_date}]},now),null);
+ assert.deepEqual(upcomingPremiere({...item,next_episode_to_air:{season_number:3,episode_number:1,air_date:'2026-12-05'}},now),{date:'2026-12-05',season:3});
+});
