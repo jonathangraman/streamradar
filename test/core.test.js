@@ -2,8 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {contentLabels,newestFirst,discoveryOrder} from '../core.js';
 import {keyOf,parseRoute,normalize,escapeHTML,formatDate,isStandup,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,providerIds} from '../core.js';
 const movie={id:161,type:'movie',title:"Ocean's Eleven",date:'2001-12-07'};
+test('newest discovery excludes future titles and keeps pagination ordered by release date',()=>{
+ assert.deepEqual(discoveryOrder('movie','2026-09-28'),{sort_by:'primary_release_date.desc','primary_release_date.lte':'2026-09-28'});
+ assert.deepEqual(discoveryOrder('tv','2026-09-28'),{sort_by:'first_air_date.desc','first_air_date.lte':'2026-09-28'});
+ assert.deepEqual([{...movie,id:1,date:''},{...movie,id:2,date:'2025-01-01'},{...movie,id:3,date:'2026-01-01'}].sort(newestFirst).map(x=>x.id),[3,2,1]);
+});
+test('content badges cover both API genre formats and only recently premiered returning seasons',()=>{
+ assert.equal(contentLabels({genres:[{id:99}]}).some(x=>x.kind==='doc'),true);
+ assert.equal(contentLabels({genre_ids:[99]}).some(x=>x.kind==='doc'),true);
+ const seasons=[{season_number:0,air_date:'2026-09-27'},{season_number:1,air_date:'2026-09-27'},{season_number:2,air_date:'2026-07-01'},{season_number:3,air_date:'2026-10-01'}];
+ assert.equal(contentLabels({seasons},'2026-09-28').length,0);
+ assert.equal(contentLabels({seasons:[...seasons,{season_number:4,air_date:'2026-09-01'}]},'2026-09-28')[0].text,'NEW SEASON');
+});
+test('MGM+, Starz and Showtime use direct subscriptions without channel add-ons',()=>{
+ const catalog=['MGM Plus','Starz','Showtime','MGM+ Amazon Channel','Starz Apple TV channel'].map((provider_name,provider_id)=>({provider_id,provider_name}));
+ assert.deepEqual(providerIds(catalog,'mgm'),[0]);assert.deepEqual(providerIds(catalog,'starz'),[1]);assert.deepEqual(providerIds(catalog,'paramount'),[2]);
+});
 test('reloadable routes preserve title and actor identity and reject malformed paths',()=>{assert.deepEqual(parseRoute('#detail/movie:161'),{view:'detail',key:'movie:161'});assert.deepEqual(parseRoute('#actor/1461'),{view:'actor',id:1461});assert.deepEqual(parseRoute('#detail/movie:0'),{view:'home'});});
 test('movies and series sharing an ID remain independent through add/rate/remove',()=>{
   let state=updateLibrary(emptyLibrary(),'watch',movie);const tv={...movie,type:'tv',title:'A series'};

@@ -20,6 +20,19 @@ export function isStandup(item) {
   const keywords = item.keywords?.keywords || item.keywords?.results || [];
   return keywords.some(k => /^(stand-up comedy|stand up comedy|stand-up special|standup comedy)$/i.test(k.name)) || /\bstand[- ]?up (comedy|special|performance)|\bcomedy special\b/i.test(item.title || item.name || '');
 }
+export function contentLabels(item, now=today()) {
+  const labels=[];
+  if(isStandup(item))labels.push({kind:'standup',text:'STAND-UP'});
+  if((item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(99))labels.push({kind:'doc',text:'DOC'});
+  const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-30);
+  const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=cutoff.toISOString().slice(0,10)).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
+  if(season)labels.push({kind:'season',text:'NEW SEASON',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
+  return labels;
+}
+export function newestFirst(a,b){return (b.date||'').localeCompare(a.date||'')||keyOf(a).localeCompare(keyOf(b));}
+export function discoveryOrder(type, now=today()) {
+  return type==='tv'?{sort_by:'first_air_date.desc','first_air_date.lte':now}:{sort_by:'primary_release_date.desc','primary_release_date.lte':now};
+}
 export function calendarEvent(item, date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('No confirmed date is available.');
   const clean = s => String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/[,;]/g,m=>'\\'+m);
@@ -66,7 +79,9 @@ export const serviceDefinitions = [
   {id:'prime',label:'Prime',match:n=>/^Amazon Prime Video(?: with Ads)?$/i.test(n)},
   {id:'disney',label:'Disney/Hulu',match:n=>/^(Disney Plus|Hulu)$/i.test(n)},
   {id:'peacock',label:'Peacock',match:n=>/^Peacock Premium(?: Plus)?$/i.test(n)},
-  {id:'paramount',label:'Paramount+',match:n=>/^Paramount(?: Plus|\+)(?: Premium| Essential| with Showtime)?$/i.test(n)},
+  {id:'paramount',label:'Paramount+ / Showtime',match:n=>/^(?:Paramount(?: Plus|\+)(?: Premium| Essential| with Showtime)?|Showtime)$/i.test(n)},
+  {id:'mgm',label:'MGM+',match:n=>/^(MGM Plus|MGM\+|Epix)$/i.test(n)},
+  {id:'starz',label:'Starz',match:n=>/^Starz$/i.test(n)},
   {id:'apple',label:'Apple TV',match:n=>/^Apple TV(?: Plus|\+)?$/i.test(n)},
   {id:'max',label:'HBO Max',match:n=>/^(HBO Max|Max)$/i.test(n)},
   {id:'theaters',label:'Theaters',match:()=>false}

@@ -32,6 +32,10 @@ Preview checks: home, search `Ocean's Eleven`, save/rate/reload, actor/back navi
 
 ## Data integrations and limitations
 
+Discovery is US-only and newest first: movie original release dates and series first-air dates, with future premieres excluded from streaming browsing. This is not a sort by when a service added a title. The separate Theaters filter can include upcoming releases. Search retains relevance ranking; watchlists and actor credits are newest first.
+
+MGM+ and Starz resolve their direct US subscriptions from the live provider catalog. Paramount+ / Showtime is one filter covering Paramount's Premium and Essential tiers; individual title offers determine the required plan. DOC labels accept both discovery and detail genre formats. NEW SEASON means a returning season premiered within the previous 30 days, excluding specials, first seasons and future dates; it does not guarantee that season is included in the service's current offer. Catalog badges load progressively from title metadata.
+
 Streaming providers are not called directly. Availability comes from TMDB's JustWatch data, with region and subscription/free/ads/rent/buy distinctions. Service IDs are resolved from the current regional provider catalog by service name rather than a stale hand-maintained numeric list. Apple TV Store and third-party add-on channels are not conflated with a direct base subscription.
 
 On September 28, 2026, the old Paramount+ ID `531` returned only 4 movie and 2 TV results. The current US catalog lists Premium `2303` and Essential `2616`; the new mapping selects these automatically and returned 1,140 movie and 738 TV results in the follow-up check. Prime, Netflix, Disney/Hulu, Peacock, Apple TV and HBO Max queries also returned HTTP 200. HTTP success does not guarantee every offer is current or every title is covered.
