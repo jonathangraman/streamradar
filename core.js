@@ -27,7 +27,45 @@ export function contentLabels(item, now=today()) {
   const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-30);
   const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=cutoff.toISOString().slice(0,10)).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
   if(season)labels.push({kind:'season',text:'NEW SEASON',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
+  const episode=item.last_episode_to_air, week=new Date(now+'T12:00:00Z');week.setUTCDate(week.getUTCDate()-7);
+  const weekday=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).toUpperCase();
+  if(episode?.season_number>0&&episode?.episode_number>0&&episode.air_date<=now&&episode.air_date>=week.toISOString().slice(0,10))labels.push({kind:'episode',text:`NEW EPISODE · ${weekday(episode.air_date)}`,description:`S${episode.season_number} E${episode.episode_number} aired ${formatDate(episode.air_date)}; streaming availability may vary.`});
+  const next=item.next_episode_to_air;
+  if(next?.season_number>0&&next?.air_date>now&&next.air_date<=shiftedDate(now,7))labels.push({kind:'next',text:`NEXT EPISODE · ${weekday(next.air_date)}`,description:`S${next.season_number} E${next.episode_number} expected ${formatDate(next.air_date)}; streaming availability may vary.`});
   return labels;
+}
+export function activityDate(item,now=today()){
+  const dates=[item.date];
+  if(item.type==='tv')dates.push(item.last_episode_to_air?.season_number>0?item.last_episode_to_air.air_date:null,...(item.seasons||[]).filter(s=>s.season_number>0).map(s=>s.air_date));
+  return dates.filter(d=>d&&d<=now).sort().at(-1)||item.date||'';
+}
+export function recentActivityFirst(a,b){return activityDate(b).localeCompare(activityDate(a))||newestFirst(a,b);}
+export const legacyTheater={name:'Cinemark Legacy and XD',address:'7201 Central Expy, Suite 100 · Plano, TX 75025',url:'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd'};
+export const networkIds={food:'143',discovery:'64'};
+export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330',max:'49|3186',starz:'318'};
+export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
+export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',page=1,ids=[]},now=today()){
+  const params=new URLSearchParams({language:'en-US',page});
+  if(service==='theaters'){
+    params.set('region','US');params.set('with_release_type','3');
+    params.set('release_date.gte',shiftedDate(now,when==='soon'?1:-42));params.set('release_date.lte',shiftedDate(now,when==='soon'?90:0));
+    params.set('sort_by',when==='soon'?'release_date.asc':'popularity.desc');
+  }else if(when==='soon'){
+    const field=type==='tv'?'first_air_date':'primary_release_date';
+    params.set(field+'.gte',shiftedDate(now,1));params.set(field+'.lte',shiftedDate(now,90));params.set('sort_by',field+'.asc');
+    // Original-production affiliations are not promised streaming arrival dates.
+    if(service!=='all'){
+      if(type==='tv'&&originalNetworks[service])params.set('with_networks',originalNetworks[service]);
+      else if(type==='movie'&&service==='apple')params.set('with_companies','194232');
+      else {params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types','flatrate');}
+    }
+  }else{
+    for(const [key,value] of Object.entries(discoveryOrder(type,now)))params.set(key,value);
+    params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types',service==='all'?'flatrate|free|ads':'flatrate');
+    if(service==='max'&&type==='tv'&&networkIds[network])params.set('with_networks',networkIds[network]);
+  }
+  if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
+  return params;
 }
 export function newestFirst(a,b){return (b.date||'').localeCompare(a.date||'')||keyOf(a).localeCompare(keyOf(b));}
 export function discoveryOrder(type, now=today()) {
@@ -39,7 +77,16 @@ export function calendarEvent(item, date) {
   const end = new Date(date+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+1);
   return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//StreamRadar//Release Calendar//EN','BEGIN:VEVENT',`UID:${keyOf(item)}-${date}@streamradar`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z')}`,`DTSTART;VALUE=DATE:${date.replace(/-/g,'')}`,`DTEND;VALUE=DATE:${end.toISOString().slice(0,10).replace(/-/g,'')}`,`SUMMARY:${clean(item.title)}`,`DESCRIPTION:${clean('Episode or original release date from TMDB; streaming arrival may differ.')}`,'BEGIN:VALARM','TRIGGER:-P1D','ACTION:DISPLAY',`DESCRIPTION:${clean(item.title)}`,'END:VALARM','END:VEVENT','END:VCALENDAR',''].join('\r\n');
 }
-export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],legacyImported:false}; }
+export const pickGenres=[{id:'all',label:'All genres'},{id:'53',label:'Thriller'},{id:'27',label:'Horror'},{id:'35',label:'Comedy'},{id:'18',label:'Drama'},{id:'80',label:'Crime'},{id:'9648',label:'Mystery'},{id:'10749',label:'Romance'},{id:'28',label:'Action'},{id:'878',label:'Sci-fi & fantasy'},{id:'99',label:'Documentary'},{id:'indie',label:'Indie films'}];
+export function pickGenreIds(genre,type){return type==='tv'&&genre==='28'?'10759':type==='tv'&&genre==='878'?'10765':genre;}
+export function pickKeyword(genre,type){return genre==='indie'?281237:type==='tv'?({'27':315058,'53':316362,'10749':9840}[genre]||null):null;}
+export function matchesPick(item,media,genre){
+  if(media!=='all'&&item.type!==media)return false;if(genre==='all')return true;
+  const keyword=pickKeyword(genre,item.type);
+  if(keyword)return (genre!=='indie'||item.type==='movie')&&(item.keywords?.keywords||item.keywords?.results||[]).some(k=>k.id===keyword);
+  return (item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(pickGenreIds(genre,item.type)));
+}
+export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],dismissed:[],legacyImported:false}; }
 export function migrateLegacy(watchlist=[], seen=[], ratings={}) {
   const state=emptyLibrary();
   state.watchlist=watchlist.map(x=>normalize(x,x.type || 'movie')).filter(Boolean);
@@ -66,6 +113,7 @@ export function updateLibrary(state, action, item, stars) {
       next.ratings[key]=stars;
     }
   } else if(action==='remove-seen') next.seen=next.seen.filter(x=>keyOf(x)!==key);
+  else if(action==='dismiss'){next.dismissed=[...new Set([...(next.dismissed||[]),key])];next.recs=next.recs.filter(x=>keyOf(x)!==key);}
   return next;
 }
 export function commitLibrary(storage, next) {

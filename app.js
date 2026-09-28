@@ -1,13 +1,14 @@
-import {keyOf,parseRoute,normalize,escapeHTML as esc,formatDate,today,contentLabels,newestFirst,discoveryOrder,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {keyOf,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
-let library=emptyLibrary(),type='movie',service='all',kind='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
+let library=emptyLibrary(),type='movie',service='all',kind='all',when='now',network='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
 const region='US';
+let pickMedia='all',pickGenre='all';
 const initialRoute=parseRoute(location.hash);
 let route={view:'home'},historyDepth=0,loading=false,toastTimer;
 const items=new Map(),cache=new Map(),sequence=createSequence(),detailSequence=createSequence(),actorSequence=createSequence();
-const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['keywords','seasons','genres'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
+const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['keywords','seasons','genres','last_episode_to_air','next_episode_to_air'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
 const image=(path,size='w342')=> typeof path==='string'&&/^\/[\w.\/-]+$/.test(path)?IMG+size+path:'';
 function poster(item){const src=image(item.poster);return src?`<img src="${src}" alt="" loading="lazy">`:'<div class="no-img" aria-hidden="true">🎬</div>';}
 function tags(item){return contentLabels(item).map(label=>`<span class="content-tag tag-${label.kind}"${label.description?` title="${esc(label.description)}"`:''}>${esc(label.text)}</span>`).join('');}
@@ -29,7 +30,8 @@ function readJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key)|
 function validLibrary(data){
   if(!data||data.version!==2||!Array.isArray(data.watchlist)||!Array.isArray(data.seen)||!Array.isArray(data.recs)||!data.ratings||typeof data.ratings!=='object')throw new Error('This is not a StreamRadar backup.');
   const out=migrateLegacy(data.watchlist,data.seen,data.ratings);
-  out.recs=data.recs.map(x=>normalize(x)).filter(Boolean);out.legacyImported=!!data.legacyImported;return out;
+  out.dismissed=Array.isArray(data.dismissed)?[...new Set(data.dismissed.filter(k=>/^(movie|tv):[1-9]\d*$/.test(k)))]:[];
+  out.recs=data.recs.map(x=>normalize(x)).filter(Boolean).filter(x=>!out.dismissed.includes(keyOf(x)));out.legacyImported=!!data.legacyImported;return out;
 }
 function save(next){try{library=commitLibrary(localStorage,next);}catch{throw new Error('Could not save on this browser. Free some storage or export your library.');}}
 function loadLibrary(){
@@ -58,39 +60,68 @@ async function importLegacy(){
     if(route.view==='watchlist')renderWatchlist();
   }catch{$('storage-status').textContent='Old cloud records could not be imported. They have not been deleted. New changes are saved on this browser.';$('legacy-retry').hidden=false;}
 }
-function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(action==='watch'?'Watchlist saved on this browser.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
+function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(action==='dismiss'?'Not interested saved. This title will not be suggested again on this browser.':action==='watch'?'Watchlist saved on this browser.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
 
 function renderServices(){
+  $('network-filter').hidden=service!=='max'||when==='soon';
+  $('network').value=network;
+  $('theater-info').hidden=service!=='theaters';
+  $('home-tabs').hidden=true;
+  $('kind').querySelector('[value="tv"]').disabled=service==='theaters';
+  $('kind').value=kind;
+  $('when').options[0].textContent=service==='theaters'?'Now in theaters':'Watch now';
   $('svcs').innerHTML=serviceDefinitions.map(s=>`<button class="svc ${service===s.id?'on':''}" data-action="service" data-service="${s.id}" aria-pressed="${service===s.id}"${service===s.id?' style="background:#fff;color:#000"':''}>${esc(s.label)}</button>`).join('');
-  document.querySelectorAll('[data-action="type"]').forEach(b=>{const on=b.dataset.type===type;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.disabled=service==='theaters'&&b.dataset.type==='tv';});
+  const selected=$('svcs').querySelector('.on');if(selected)$('svcs').parentElement.scrollLeft=Math.max(0,selected.offsetLeft-20);
+  document.querySelectorAll('[data-action="type"]').forEach(b=>{const on=b.dataset.type===type;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.disabled=(service==='theaters'&&b.dataset.type==='tv')||(service==='max'&&network!=='all'&&when==='now'&&b.dataset.type==='movie');});
 }
-function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.date>today()?'Expected':item.type==='tv'?'First aired':'Released'} ${esc(formatDate(item.date))}</div><div class="card-tags">${tags(item)}</div></div></button>`;}
+function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item)}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate(item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
 async function loadCatalog(more=false){
-  const request=sequence.next(),wanted={type,service,region,kind,page:more?page+1:1};loading=true;
+  const request=sequence.next(),wanted={type,service,region,kind,when,network,page:more?page+1:1};loading=true;
   searchController?.abort();if(!more){page=1;results=[];$('grid').innerHTML='<div class="loading" role="status">Loading titles…</div>';}
   $('load-more').hidden=true;$('count-lbl').textContent='Loading…';
   try{
-    const providerData=await api(`/watch/providers/${wanted.type}?watch_region=${wanted.region}`);
-    if(!sequence.current(request))return;catalog=providerData.results||[];
-    const params=new URLSearchParams({language:'en-US',page:wanted.page,...discoveryOrder(wanted.type),watch_region:wanted.region,with_watch_monetization_types:'flatrate|free|ads'});
-    if(wanted.service==='theaters'){
-      params.delete('primary_release_date.lte');params.delete('watch_region');params.delete('with_watch_monetization_types');params.set('region',wanted.region);params.set('with_release_type','2|3');
-      const start=new Date();start.setDate(start.getDate()-30);const end=new Date();end.setDate(end.getDate()+45);
-      params.set('release_date.gte',start.toISOString().slice(0,10));params.set('release_date.lte',end.toISOString().slice(0,10));
-    }else{
-      const ids=providerIds(catalog,wanted.service);if(!ids.length)throw new Error('No matching provider is currently listed for this country. Try All or another service.');
-      params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types',wanted.service==='all'?'flatrate|free|ads':'flatrate');
-    }
-    // TMDB keyword 9716 is "stand-up comedy", verified against title keywords.
-    if(wanted.kind==='doc')params.set('with_genres','99');
-    if(wanted.kind==='standup')params.set('with_keywords','9716');
-    const data=await api(`/discover/${wanted.type}?${params}`);
+    const types=wanted.service==='theaters'?['movie']:wanted.service==='max'&&wanted.network!=='all'?['tv']:wanted.kind==='movie'?['movie']:wanted.kind==='tv'?['tv']:['movie','tv'];
+    const batches=await Promise.all(types.map(async media=>{
+      const providerData=await api(`/watch/providers/${media}?watch_region=US`);
+      const ids=providerIds(providerData.results||[],wanted.service);
+      if(wanted.service!=='theaters'&&!ids.length)throw new Error('This service is not currently listed in the US provider catalog.');
+      const params=catalogQuery({...wanted,type:media,ids});
+      const data=await api(`/discover/${media}?${params}`);
+      if(media==='tv'&&wanted.when==='now'){
+        // First-air sorting alone hides returning shows. Also retrieve series airing recently.
+        const recent=new URLSearchParams(params);recent.set('air_date.gte',shiftedDate(today(),-30));recent.set('air_date.lte',today());recent.set('sort_by','popularity.desc');
+        const updates=await api(`/discover/tv?${recent}`);
+        data.results=[...(updates.results||[]),...(data.results||[])];data.total_pages=Math.max(data.total_pages||1,updates.total_pages||1);
+      }
+      return {...data,results:(data.results||[]).map(x=>normalize(x,media))};
+    }));
     if(!sequence.current(request))return;
-    let incoming=(data.results||[]).map(x=>normalize(x,wanted.type)).filter(Boolean);
+    const data={total_pages:Math.max(...batches.map(d=>d.total_pages||1)),results:batches.flatMap(d=>d.results||[])};
+    let incoming=[...new Map((data.results||[]).filter(Boolean).map(x=>[keyOf(x),x])).values()];
+    if(wanted.service==='theaters'){
+      incoming=await mapLimit(incoming,4,async item=>{
+        try{
+          const dates=await api(`/movie/${item.id}/release_dates`),start=shiftedDate(today(),wanted.when==='soon'?1:-42),end=shiftedDate(today(),wanted.when==='soon'?90:0);
+          const matches=(dates.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates?.filter(r=>r.type===3).map(r=>r.release_date.slice(0,10)).filter(d=>d>=start&&d<=end).sort()||[];
+          return {...item,theaterDate:wanted.when==='soon'?matches[0]:matches.at(-1)};
+        }catch{return item;}
+      });
+      if(!sequence.current(request))return;
+    }
+    if(types.includes('tv')&&wanted.when==='now'){
+      $('count-lbl').textContent='Checking latest season and episode dates…';
+      incoming=await mapLimit(incoming,4,async item=>{
+        if(!sequence.current(request)||item.type!=='tv')return item;
+        try{return {...item,...normalize(await api(`/tv/${item.id}?append_to_response=credits,keywords`),'tv')};}catch{return item;}
+      });
+      if(!sequence.current(request))return;
+    }
     if(wanted.kind==='standup')incoming=incoming.map(x=>({...x,keywords:{keywords:[{id:9716,name:'stand-up comedy'}]}}));
     page=wanted.page;totalPages=Math.min(data.total_pages||1,500);results=[...new Map([...results,...incoming].map(x=>[keyOf(x),x])).values()];
-    $('grid').innerHTML=results.map(card).join('')||'<div class="empty">No matching titles on this page. Try another service or load more.</div>';
-    $('count-lbl').textContent=`${results.length} titles · ${region} · ${service==='theaters'?'Theatrical releases; dates are not streaming arrivals':'Newest first · '+(wanted.type==='tv'?'series premiere dates':'original release dates')}${kind==='standup'?' · Stand-up comedy':''}`;
+    if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.date||'').localeCompare(b.theaterDate||b.date||''));
+    else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
+    $('grid').innerHTML=results.map(card).join('')||'<div class="empty">No announced titles match these filters. Try All titles or another service; schedules may not yet be listed.</div>';
+    $('count-lbl').textContent=`${results.length} titles · US · ${wanted.when==='soon'?'Upcoming premieres · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     $('load-more').hidden=page>=totalPages;
     enrichLabels(results,request);
   }catch(e){if(sequence.current(request)){$('grid').innerHTML=errorHTML(e.message,'retry-catalog');$('count-lbl').textContent='Catalog unavailable';}}
@@ -101,15 +132,15 @@ async function enrichLabels(titles,request){
     if(!sequence.current(request))return;
     const detail=await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`);
     if(!sequence.current(request))return;
-    const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres});
+    const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres,last_episode_to_air:detail.last_episode_to_air,next_episode_to_air:detail.next_episode_to_air});
     const node=$('grid').querySelector(`[data-key="${keyOf(item)}"] .card-tags`);
     if(node)node.innerHTML=tags(enriched);
   });
 }
-function clearSearch(){clearTimeout(searchTimer);searchController?.abort();sequence.next();$('home-search-input').value='';$('home-search-clear').hidden=true;$('browse-controls').hidden=false;$('home-tabs').hidden=false;loadCatalog();$('home-search-input').focus();}
+function clearSearch(){clearTimeout(searchTimer);searchController?.abort();sequence.next();$('home-search-input').value='';$('home-search-clear').hidden=true;$('browse-controls').hidden=false;$('home-tabs').hidden=false;renderServices();loadCatalog();$('home-search-input').focus();}
 function onSearch(){
   clearTimeout(searchTimer);searchController?.abort();sequence.next();const q=$('home-search-input').value.trim();
-  $('home-search-clear').hidden=!q;$('browse-controls').hidden=!!q;$('home-tabs').hidden=!!q;$('load-more').hidden=true;
+  $('home-search-clear').hidden=!q;$('browse-controls').hidden=!!q;$('home-tabs').hidden=true;$('load-more').hidden=true;
   if(!q){loadCatalog();return;}
   $('count-lbl').textContent='Searching…';$('grid').innerHTML='<div class="loading">Searching titles…</div>';searchTimer=setTimeout(()=>search(q),300);
 }
@@ -153,7 +184,7 @@ async function loadDetail(key){
   try{
     const raw=await api(`/${media}/${id}?language=en-US&append_to_response=credits,keywords`);
     if(!detailSequence.current(request))return;detailItem=remember(normalize(raw,media));const item=detailItem;
-    $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''} ${raw.vote_average?' · TMDB '+Number(raw.vote_average).toFixed(1)+'/10':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div><div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div><p class="det-overview">${esc(raw.overview||'No description available.')}</p><div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><p class="data-note">Original ${media==='tv'?'first-air':'release'} date: ${esc(formatDate(item.date))}. This is not a guaranteed streaming arrival date.</p><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
+    $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''} ${raw.vote_average?' · TMDB '+Number(raw.vote_average).toFixed(1)+'/10':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div>${media==='movie'?`<section class="showtime-panel"><p class="person-eyebrow">YOUR THEATER</p><h2>${legacyTheater.name}</h2><p>${legacyTheater.address}</p><a class="showtime-link" href="${legacyTheater.url}" target="_blank" rel="noopener noreferrer">Check live showtimes & tickets ↗</a><small>Opens Cinemark’s current schedule. Select ${esc(item.title)} if it is playing; local availability is not confirmed here.</small></section>`:''}<div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div><p class="det-overview">${esc(raw.overview||'No description available.')}</p><div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><p class="data-note">Original ${media==='tv'?'first-air':'release'} date: ${esc(formatDate(item.date))}. This is not a guaranteed streaming arrival date.</p><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
     renderDetailActions();$('det-inner').querySelector('h1').focus({preventScroll:true});
     // Optional services must never block the primary title or each other.
     loadOffers(item,request);loadScores(item,request);
@@ -192,17 +223,41 @@ function renderWatchlist(){
 }
 function renderForYou(){
   const seeds=[...library.seen,...library.watchlist].filter(x=>library.ratings[keyOf(x)]>=4);
-  $('fy-inner').innerHTML=`<button class="gen-btn" data-action="recommend"${seeds.length?'':' disabled'}>${library.recs.length?'Refresh picks':'Find related titles'}</button><p class="data-note">${seeds.length?'Based on titles you rated 4–5 stars. Check each title for current offers.':'Rate at least one title 4–5 stars to find related movies or series.'}</p>`+library.recs.map(item=>`<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'Related to a title you enjoyed.')}</p>${ratingControl(item)}<button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></article>`).join('');
+  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label></div><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button><p class="data-note">${seeds.length?'Related to your 4–5-star ratings, with matching streaming discoveries.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Filters apply when you refresh. Not interested choices stay saved on this browser.</p>`+library.recs.filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
+    const saved=library.watchlist.some(x=>keyOf(x)===keyOf(item));
+    return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
+  }).join('');
+  $('pick-media').value=pickMedia;$('pick-genre').value=pickGenre;
+  $('pick-media').disabled=recommending;$('pick-genre').disabled=recommending;
+  $('pick-media').addEventListener('change',e=>{pickMedia=e.target.value;if(pickMedia==='tv'&&pickGenre==='indie'){pickGenre='all';$('pick-genre').value='all';}});
+  $('pick-genre').addEventListener('change',e=>{pickGenre=e.target.value;if(pickGenre==='indie'){pickMedia='movie';$('pick-media').value='movie';}});
 }
 let recommending=false;
 async function recommend(){
-  if(recommending)return;recommending=true;const button=document.querySelector('[data-action="recommend"]');button.disabled=true;button.textContent='Finding related titles…';
+  if(recommending)return;recommending=true;const chosenMedia=pickMedia,chosenGenre=pickGenre;renderForYou();
   try{
-    const seeds=[...library.seen,...library.watchlist].filter(x=>library.ratings[keyOf(x)]>=4).slice(0,5),excluded=new Set([...library.watchlist,...library.seen].map(keyOf));
+    const seeds=[...library.seen,...library.watchlist].filter(x=>library.ratings[keyOf(x)]>=4&&(chosenMedia==='all'||x.type===chosenMedia)).slice(0,5);
+    const excluded=new Set([...library.watchlist,...library.seen].map(keyOf).concat(library.dismissed||[]));
     const batches=await mapLimit(seeds,3,async seed=>{const d=await api(`/${seed.type}/${seed.id}/recommendations`);return (d.results||[]).map(x=>({...normalize(x,seed.type),reason:'Because you liked '+seed.title}));});
-    if(batches.every(x=>x._error))throw new Error('Recommendations are temporarily unavailable.');
-    const picks=[...new Map(batches.filter(Array.isArray).flat().filter(x=>normalize(x)&&!excluded.has(keyOf(x))).map(x=>[keyOf(x),x])).values()].slice(0,12);
-    save({...library,recs:picks});picks.forEach(remember);if(!picks.length)toast('No new related titles found. Try rating another favorite.');
+    let related=batches.filter(Array.isArray).flat();
+    if(chosenGenre==='indie')related=[];
+    const types=chosenMedia==='all'?['movie','tv']:[chosenMedia];
+    const discoveries=await mapLimit(types,2,async media=>{
+      const p=new URLSearchParams({language:'en-US',watch_region:'US',with_watch_monetization_types:'flatrate|free|ads',sort_by:'popularity.desc',page:'1'});
+      p.set(media==='tv'?'first_air_date.lte':'primary_release_date.lte',today());
+      const providers=await api(`/watch/providers/${media}?watch_region=US`);p.set('with_watch_providers',providerIds(providers.results||[],'all').join('|'));
+      const keyword=pickKeyword(chosenGenre,media);
+      if(keyword)p.set('with_keywords',keyword);else if(chosenGenre!=='all')p.set('with_genres',pickGenreIds(chosenGenre,media));
+      const d=await api(`/discover/${media}?${p}`);
+      return (d.results||[]).map(x=>({...normalize(x,media),...(keyword?{keywords:{keywords:[{id:keyword}]}}:{}),reason:'A US streaming discovery matching your filters.'}));
+    });
+    if(discoveries.every(x=>x._error)&&!related.length)throw new Error('Picks are temporarily unavailable. Please retry.');
+    const prior=new Set(library.recs.map(keyOf));
+    const candidates=[...new Map([...related,...discoveries.filter(Array.isArray).flat()].filter(x=>normalize(x)&&!excluded.has(keyOf(x))&&matchesPick(x,chosenMedia,chosenGenre)).map(x=>[keyOf(x),x])).values()];
+    candidates.sort((a,b)=>Number(prior.has(keyOf(a)))-Number(prior.has(keyOf(b))));
+    // Recheck dismissals made while requests were running.
+    const picks=candidates.filter(x=>!(library.dismissed||[]).includes(keyOf(x))&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))).slice(0,12);
+    save({...library,recs:picks});picks.forEach(remember);if(!picks.length)toast('No new matches for these filters. Try another genre or type.');
   }catch(e){toast(e.message);}finally{recommending=false;if(route.view==='foryou')renderForYou();}
 }
 function download(content,name,mime){const url=URL.createObjectURL(new Blob([content],{type:mime})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -213,8 +268,8 @@ document.addEventListener('click',async event=>{
   try{
     if(a==='detail')showRoute({view:'detail',key});else if(a==='actor')showRoute({view:'actor',id:Number(b.dataset.id)});
     else if(['home','watchlist','foryou','about'].includes(a))showRoute({view:a});else if(a==='back')goBack();
-    else if(['watch','seen','remove-seen','rate'].includes(a))mutate(a,key,Number(b.dataset.stars));
-    else if(a==='service'){service=b.dataset.service;if(service==='theaters')type='movie';renderServices();loadCatalog();}
+    else if(['watch','seen','remove-seen','rate','dismiss'].includes(a))mutate(a,key,Number(b.dataset.stars));
+    else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';if(kind==='tv')kind='movie';}renderServices();loadCatalog();}
     else if(a==='type'){type=b.dataset.type;renderServices();loadCatalog();}
     else if(a==='clear-search')clearSearch();else if(a==='retry-search')search($('home-search-input').value.trim());
     else if(a==='retry-catalog')loadCatalog();else if(a==='more'&&!loading)loadCatalog(true);
@@ -230,11 +285,13 @@ document.addEventListener('click',async event=>{
 $('home-search-input').addEventListener('input',onSearch);
 $('home-search-input').addEventListener('keydown',e=>{if(e.key==='Escape'){clearSearch();}if(e.key==='Enter'){clearTimeout(searchTimer);search($('home-search-input').value.trim());}});
 
-$('kind').addEventListener('change',()=>{kind=$('kind').value;loadCatalog();});
+$('when').addEventListener('change',()=>{when=$('when').value;network='all';if(when==='soon'&&['movie','tv'].includes(kind))kind='all';renderServices();loadCatalog();});
+$('network').addEventListener('change',()=>{network=$('network').value;if(network!=='all'){type='tv';kind='tv';}renderServices();loadCatalog();});
+$('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
-  try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings}});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
+  try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
 });
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;});
-const network=()=>{$('offline').hidden=navigator.onLine;};window.addEventListener('online',network);window.addEventListener('offline',network);network();
+const updateNetworkStatus=()=>{$('offline').hidden=navigator.onLine;};window.addEventListener('online',updateNetworkStatus);window.addEventListener('offline',updateNetworkStatus);updateNetworkStatus();
 loadLibrary();renderServices();loadCatalog();importLegacy();if(initialRoute.view!=='home')showRoute(initialRoute,false);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});

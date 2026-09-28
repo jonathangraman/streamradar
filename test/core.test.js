@@ -3,8 +3,52 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {contentLabels,newestFirst,discoveryOrder} from '../core.js';
+import {catalogQuery,shiftedDate,legacyTheater,activityDate,recentActivityFirst} from '../core.js';
+import {matchesPick,pickKeyword} from '../core.js';
 import {keyOf,parseRoute,normalize,escapeHTML,formatDate,isStandup,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,providerIds} from '../core.js';
 const movie={id:161,type:'movie',title:"Ocean's Eleven",date:'2001-12-07'};
+test('not interested persists canonical identity without affecting a different media type',()=>{
+ const initial={...emptyLibrary(),recs:[movie,{...movie,type:'tv'}]};
+ const next=updateLibrary(initial,'dismiss',movie);assert.deepEqual(next.dismissed,['movie:161']);assert.equal(next.recs.length,1);assert.equal(next.recs[0].type,'tv');assert.deepEqual(JSON.parse(JSON.stringify(next)).dismissed,['movie:161']);
+ assert.equal(updateLibrary(next,'dismiss',movie).dismissed.length,1);assert.equal(initial.recs.length,2);
+});
+test('pick filters distinguish media, genres and verified independent/TV keywords',()=>{
+ assert(matchesPick({...movie,genre_ids:[53]},'movie','53'));assert(!matchesPick({...movie,genre_ids:[53]},'tv','53'));
+ assert(matchesPick({...movie,type:'tv',genre_ids:[10759]},'tv','28'));
+ assert(!matchesPick(movie,'movie','indie'));assert(matchesPick({...movie,keywords:{keywords:[{id:281237}]}},'movie','indie'));
+ assert.equal(pickKeyword('27','tv'),315058);assert(matchesPick({...movie,type:'tv',keywords:{results:[{id:315058}]}},'tv','27'));
+});
+test('a returning series ranks by its new episode or season rather than its original premiere',()=>{
+ const returning={id:1,type:'tv',date:'2001-01-01',last_episode_to_air:{season_number:4,episode_number:3,air_date:'2026-09-27'},next_episode_to_air:{season_number:4,episode_number:4,air_date:'2026-10-01'}};
+ const film={id:2,type:'movie',date:'2026-09-26'};
+ assert.equal(activityDate(returning,'2026-09-28'),'2026-09-27');assert.equal([film,returning].sort(recentActivityFirst)[0].id,1);
+ assert.equal(activityDate({...returning,last_episode_to_air:null,seasons:[{season_number:2,air_date:'2026-09-28'},{season_number:3,air_date:'2027-01-01'}]},'2026-09-28'),'2026-09-28');
+ const labels=contentLabels(returning,'2026-09-28');assert(labels.some(x=>x.text==='NEW EPISODE · SUN'));assert(labels.some(x=>x.text==='NEXT EPISODE · THU'));
+});
+test('theatrical browsing separates current wide releases from upcoming US releases',()=>{
+ const now=catalogQuery({service:'theaters'},'2026-09-28'),soon=catalogQuery({service:'theaters',when:'soon'},'2026-09-28');
+ assert.equal(now.get('region'),'US');assert.equal(now.get('with_release_type'),'3');assert.equal(now.get('release_date.lte'),'2026-09-28');assert.equal(now.has('watch_region'),false);assert.equal(now.get('sort_by'),'popularity.desc');
+ assert.equal(soon.get('release_date.gte'),'2026-09-29');assert.equal(soon.get('release_date.lte'),'2026-12-27');assert.equal(soon.get('sort_by'),'release_date.asc');
+ assert.equal(legacyTheater.url,'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd');
+});
+test('network filters require both HBO availability and the requested original network',()=>{
+ const q=catalogQuery({type:'tv',service:'max',network:'food',ids:[1899]},'2026-09-28');
+ assert.equal(q.get('with_networks'),'143');assert.equal(q.get('watch_region'),'US');assert.equal(q.get('with_watch_providers'),'1899');assert.equal(q.get('with_watch_monetization_types'),'flatrate');
+ assert.equal(catalogQuery({type:'tv',service:'max',network:'discovery',ids:[1899]}).get('with_networks'),'64');
+ assert.equal(catalogQuery({type:'tv',service:'netflix',network:'food',ids:[8]}).has('with_networks'),false);
+});
+test('upcoming Apple originals include movie and series metadata without requiring current availability',()=>{
+ const film=catalogQuery({service:'apple',type:'movie',when:'soon',ids:[350]},'2026-09-28');
+ const tv=catalogQuery({service:'apple',type:'tv',when:'soon',ids:[350]},'2026-09-28');
+ assert.equal(film.get('with_companies'),'194232');assert.equal(tv.get('with_networks'),'2552');assert.equal(tv.has('with_watch_providers'),false);assert.equal(film.get('primary_release_date.gte'),'2026-09-29');
+ assert.equal(catalogQuery({service:'starz',type:'movie',when:'soon',ids:[43]}).get('with_watch_providers'),'43');
+ assert.equal(shiftedDate('2026-12-31',1),'2027-01-01');
+});
+test('new episode pills exclude future, stale, special and missing episodes',()=>{
+ const label=episode=>contentLabels({last_episode_to_air:episode},'2026-09-28').some(x=>x.kind==='episode');
+ assert(label({season_number:2,episode_number:3,air_date:'2026-09-27'}));
+ for(const episode of [{season_number:2,episode_number:3,air_date:'2026-09-29'},{season_number:2,episode_number:3,air_date:'2026-09-01'},{season_number:0,episode_number:3,air_date:'2026-09-27'},{}])assert.equal(label(episode),false);
+});
 test('newest discovery excludes future titles and keeps pagination ordered by release date',()=>{
  assert.deepEqual(discoveryOrder('movie','2026-09-28'),{sort_by:'primary_release_date.desc','primary_release_date.lte':'2026-09-28'});
  assert.deepEqual(discoveryOrder('tv','2026-09-28'),{sort_by:'first_air_date.desc','first_air_date.lte':'2026-09-28'});
