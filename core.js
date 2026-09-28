@@ -50,7 +50,10 @@ export const originalsOnlyServices=['prime','disney','paramount','peacock'];
 export const originalMovieServices=['prime','disney'];
 export function isOriginalSeries(item,service){
   const broadcast=service==='paramount'?16:service==='peacock'?6:null;
-  if(broadcast&&(item.networks||[]).some(n=>n.id===broadcast))return false;
+  const launch=service==='paramount'?'2014-10-28':'2020-07-15';
+  // Network lists include later syndication. Reject pre-service broadcast premieres,
+  // but retain streaming originals subsequently aired on a broadcast network.
+  if(broadcast&&(item.networks||[]).some(n=>n.id===broadcast)&&(!(item.first_air_date||item.date)||(item.first_air_date||item.date)<launch))return false;
   const ids=(originalNetworks[service]||'').split('|').map(Number);
   return (item.networks||[]).some(n=>ids.includes(n.id));
 }
