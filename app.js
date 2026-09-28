@@ -1,4 +1,4 @@
-import {keyOf,isEnglish,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -108,15 +108,16 @@ async function loadCatalog(more=false){
       });
       if(!sequence.current(request))return;
     }
-    if(types.includes('tv')&&wanted.when==='now'){
-      $('count-lbl').textContent='Checking latest season and episode dates…';
+    if(wanted.kind==='movie'||(types.includes('tv')&&wanted.when==='now')){
+      $('count-lbl').textContent=wanted.kind==='movie'?'Checking movie categories…':'Checking latest season and episode dates…';
       incoming=await mapLimit(incoming,4,async item=>{
-        if(!sequence.current(request)||item.type!=='tv')return item;
-        try{return {...item,...normalize(await api(`/tv/${item.id}?append_to_response=credits,keywords`),'tv')};}catch{return item;}
+        if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'))return item;
+        try{return {...item,...normalize(await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`),item.type)};}catch{return item;}
       });
       if(!sequence.current(request))return;
     }
     if(wanted.kind==='standup')incoming=incoming.map(x=>({...x,keywords:{keywords:[{id:9716,name:'stand-up comedy'}]}}));
+    if(wanted.kind==='movie')incoming=incoming.filter(isNarrativeMovie);
     page=wanted.page;totalPages=Math.min(data.total_pages||1,500);results=[...new Map([...results,...incoming].map(x=>[keyOf(x),x])).values()];
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.date||'').localeCompare(b.theaterDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);

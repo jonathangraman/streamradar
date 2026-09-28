@@ -32,6 +32,8 @@ Preview checks: home, search `Ocean's Eleven`, save/rate/reload, actor/back navi
 
 ## Data integrations and limitations
 
+Home's Show → Movies means narrative movies: exclude Documentary genre 99 and Stand-up Comedy keyword 9716 in discovery, then check title details for documentary genres and stand-up keywords/titles before display. All titles retains all categories; Documentary and Stand-up retain their dedicated filters. This applies to every service, Watch Now, Coming Soon and Theaters. For You's independent type/genre selectors retain their existing meaning (for example, Movies + Documentary).
+
 Discovery, Coming Soon, Theaters, search, actor filmographies and For You display only titles whose TMDB original language is English (`en`). Translated titles, English subtitles or dubs do not qualify. Unknown-language results are excluded. Existing saved library records are retained. Discovery filters at the source, and other lists filter their returned results; search pages may therefore contain fewer matches.
 
 Watch Now discovery uses US availability. Show includes All titles, Movies, Series, Documentaries and Stand-up. It combines recent-airing series candidates with premiere-sorted discovery results, hydrates episode/season metadata and ranks loaded titles by latest aired episode/season or original movie release. Loading more expands the candidate set and re-sorts it; this is not an exhaustive global sort by service arrival date. Search retains relevance ranking; watchlists and actor credits are newest first.
