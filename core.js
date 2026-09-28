@@ -19,8 +19,9 @@ export function formatDate(value) {
 export const today = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 export function isStandup(item) {
   const keywords = item.keywords?.keywords || item.keywords?.results || [];
-  return keywords.some(k => /^(stand-up comedy|stand up comedy|stand-up special|standup comedy)$/i.test(k.name)) || /\bstand[- ]?up (comedy|special|performance)|\bcomedy special\b/i.test(item.title || item.name || '');
+  return keywords.some(k => k.id===9716 || /^(stand-up comedy|stand up comedy|stand-up special|standup comedy)$/i.test(k.name)) || /\bstand[- ]?up (comedy|special|performance)|\bcomedy special\b/i.test(item.title || item.name || '');
 }
+export function isNarrativeMovie(item){return (item.type||item.media_type)==='movie'&&!(item.genre_ids||[]).includes(99)&&!(item.genres||[]).some(g=>g.id===99)&&!isStandup(item);}
 export function contentLabels(item, now=today()) {
   const labels=[];
   if(isStandup(item))labels.push({kind:'standup',text:'STAND-UP'});
@@ -69,6 +70,7 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
     if(service==='max'&&type==='tv'&&networkIds[network])params.set('with_networks',networkIds[network]);
   }
   if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
+  if(kind==='movie'){params.set('without_genres','99');params.set('without_keywords','9716');}
   return params;
 }
 export function newestFirst(a,b){return (b.date||'').localeCompare(a.date||'')||keyOf(a).localeCompare(keyOf(b));}

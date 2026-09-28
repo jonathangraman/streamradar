@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import tmdb from '../api/tmdb.js';
 import ratings from '../api/ratings.js';
 function response(){return {headers:{},status(n){this.code=n;return this;},json(d){this.body=d;return this;},setHeader(k,v){this.headers[k]=v;}};}
+test('movie-category exclusions reach TMDB rather than filtering only the first page',async()=>{
+ const original=global.fetch;process.env.TMDB_READ_TOKEN='test';let target;
+ global.fetch=async url=>{target=new URL(url);return {ok:true,json:async()=>({results:[]})};};
+ try{await tmdb({method:'GET',url:'/api/tmdb?path=/discover/movie&without_genres=99&without_keywords=9716'},response());assert.equal(target.searchParams.get('without_genres'),'99');assert.equal(target.searchParams.get('without_keywords'),'9716');}finally{global.fetch=original;}
+});
 test('English-only applies to discovery, search, recommendations and actor credits',async()=>{
  const original=global.fetch;process.env.TMDB_READ_TOKEN='test';let target;
  const titles=[{id:1,original_language:'en'},{id:2,original_language:'fr'},{id:3,title:'English translated name'}];

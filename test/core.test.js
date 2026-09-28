@@ -6,8 +6,17 @@ import {contentLabels,newestFirst,discoveryOrder} from '../core.js';
 import {catalogQuery,shiftedDate,legacyTheater,activityDate,recentActivityFirst} from '../core.js';
 import {matchesPick,pickKeyword} from '../core.js';
 import {isEnglish} from '../core.js';
+import {isNarrativeMovie} from '../core.js';
 import {keyOf,parseRoute,normalize,escapeHTML,formatDate,isStandup,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,providerIds} from '../core.js';
 const movie={id:161,type:'movie',title:"Ocean's Eleven",date:'2001-12-07'};
+test('Movies excludes docs and stand-up while retaining ordinary comedy films',()=>{
+ assert(isNarrativeMovie({...movie,genre_ids:[35]}));
+ for(const item of [{...movie,genre_ids:[99]},{...movie,genre_ids:[],genres:[{id:99}]},{...movie,keywords:{keywords:[{id:9716}]}},{...movie,keywords:{keywords:[{name:'stand-up special'}]}},{...movie,title:'A Comedy Special'},{...movie,type:'tv'}])assert.equal(isNarrativeMovie(item),false);
+ for(const service of ['all','netflix','theaters'])for(const when of ['now','soon']){
+  const q=catalogQuery({service,when,kind:'movie'});assert.equal(q.get('without_genres'),'99');assert.equal(q.get('without_keywords'),'9716');
+ }
+ assert.equal(catalogQuery({kind:'all'}).has('without_genres'),false);assert.equal(catalogQuery({kind:'doc'}).get('with_genres'),'99');assert.equal(catalogQuery({kind:'standup'}).get('with_keywords'),'9716');
+});
 test('season badge includes day 90 but excludes day 91 and future season premieres',()=>{
  const now='2026-09-28',label=air_date=>contentLabels({seasons:[{season_number:2,air_date}]},now).some(x=>x.kind==='season');
  assert(label(shiftedDate(now,-90)));assert(!label(shiftedDate(now,-91)));assert(label(now));assert(!label(shiftedDate(now,1)));
