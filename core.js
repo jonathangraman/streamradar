@@ -44,7 +44,7 @@ export function activityDate(item,now=today()){
 export function recentActivityFirst(a,b){return activityDate(b).localeCompare(activityDate(a))||newestFirst(a,b);}
 export const legacyTheater={name:'Cinemark Legacy and XD',address:'7201 Central Expy, Suite 100 · Plano, TX 75025',url:'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd'};
 export const networkIds={food:'143',discovery:'64'};
-export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67',max:'49|3186',starz:'318'};
+export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67',max:'49|3186',starz:'318',mgm:'6219|922'};
 // Network affiliations identify series; movie premieres need separate release evidence.
 export const originalsOnlyServices=['prime','disney','paramount','peacock'];
 export const originalMovieServices=['prime','disney'];
@@ -100,6 +100,24 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
   if(type==='tv'&&originalsOnlyServices.includes(service))params.set('with_networks',originalNetworks[service]);
   if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
   if(kind==='movie'){params.set('without_genres','99');params.set('without_keywords','9716');}
+  return params;
+}
+export function upcomingPremiere(item,now=today()){
+  const end=shiftedDate(now,90),inWindow=d=>d>now&&d<=end;
+  const first=item.first_air_date||item.date;
+  if(inWindow(first))return {date:first,season:1};
+  const candidates=(item.seasons||[]).filter(s=>s.season_number>1&&inWindow(s.air_date)).map(s=>({date:s.air_date,season:s.season_number}));
+  const next=item.next_episode_to_air;
+  if(next?.season_number>1&&next.episode_number===1&&inWindow(next.air_date)){
+    const i=candidates.findIndex(s=>s.season===next.season_number);if(i>=0)candidates.splice(i,1);
+    candidates.push({date:next.air_date,season:next.season_number});
+  }
+  return candidates.sort((a,b)=>a.date.localeCompare(b.date))[0]||null;
+}
+export function upcomingSeasonQuery(options,now=today()){
+  const params=catalogQuery({...options,type:'tv',when:'soon'},now);
+  params.delete('first_air_date.gte');params.set('first_air_date.lte',now);
+  params.set('air_date.gte',shiftedDate(now,1));params.set('air_date.lte',shiftedDate(now,90));params.set('sort_by','popularity.desc');
   return params;
 }
 export function newestFirst(a,b){return (b.date||'').localeCompare(a.date||'')||keyOf(a).localeCompare(keyOf(b));}
