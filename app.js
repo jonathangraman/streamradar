@@ -1,4 +1,4 @@
-import {keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -108,13 +108,22 @@ async function loadCatalog(more=false){
       });
       if(!sequence.current(request))return;
     }
-    if(wanted.kind==='movie'||(types.includes('tv')&&wanted.when==='now')){
+    if(originalsOnlyServices.includes(wanted.service)||wanted.kind==='movie'||(types.includes('tv')&&wanted.when==='now')){
       $('count-lbl').textContent=wanted.kind==='movie'?'Checking movie categories…':'Checking latest season and episode dates…';
       incoming=await mapLimit(incoming,4,async item=>{
-        if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'))return item;
-        try{return {...item,...normalize(await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`),item.type)};}catch{return item;}
+        if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'&&!originalMovieServices.includes(wanted.service)))return item;
+        try{return {...item,...normalize(await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`),item.type)};}catch{if(originalsOnlyServices.includes(wanted.service))throw new Error('Could not verify originals. Please retry.');return item;}
       });
       if(!sequence.current(request))return;
+    }
+    if(originalsOnlyServices.includes(wanted.service)){
+      incoming=await mapLimit(incoming,4,async item=>{
+        if(item.type==='tv')return isOriginalSeries(item,wanted.service)?item:null;
+        if(!originalMovieServices.includes(wanted.service))return item;
+        try{const releases=await api('/movie/'+item.id+'/release_dates');return isOriginalMovie({...item,release_dates:releases},wanted.service)?item:null;}catch{throw new Error('Could not verify originals. Please retry.');}
+      });
+      if(!sequence.current(request))return;
+      incoming=incoming.filter(Boolean);
     }
     if(wanted.kind==='standup')incoming=incoming.map(x=>({...x,keywords:{keywords:[{id:9716,name:'stand-up comedy'}]}}));
     if(wanted.kind==='movie')incoming=incoming.filter(isNarrativeMovie);
@@ -122,7 +131,7 @@ async function loadCatalog(more=false){
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.date||'').localeCompare(b.theaterDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
     $('grid').innerHTML=results.map(card).join('')||'<div class="empty">No announced titles match these filters. Try All titles or another service; schedules may not yet be listed.</div>';
-    $('count-lbl').textContent=`${results.length} titles · English · US · ${wanted.when==='soon'?'Upcoming premieres · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    $('count-lbl').textContent=`${results.length} titles · English · US · ${originalsOnlyServices.includes(wanted.service)?(originalMovieServices.includes(wanted.service)?'Originals only · ':'Original series only · '):''}${wanted.when==='soon'?'Upcoming premieres · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     $('load-more').hidden=page>=totalPages;
     enrichLabels(results,request);
   }catch(e){if(sequence.current(request)){$('grid').innerHTML=errorHTML(e.message,'retry-catalog');$('count-lbl').textContent='Catalog unavailable';}}

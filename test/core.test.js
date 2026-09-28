@@ -116,3 +116,37 @@ test('service worker falls back on 404 and never caches API/personal responses',
  events.fetch({request:{url:'https://example.test/',method:'GET',mode:'navigate'},respondWith:p=>result=p});assert.equal(await (await result).text(),'cached shell');
  let intercepted=false;events.fetch({request:{url:'https://example.test/api/tmdb?path=/search/movie',method:'GET',mode:'cors'},respondWith:()=>intercepted=true});assert.equal(intercepted,false);
 });
+
+import {isOriginalSeries,isOriginalMovie,originalsOnlyServices,originalNetworks} from '../core.js';
+test('original series filter keeps service networks and excludes broadcast catalogs on every page',()=>{
+ for(const service of originalsOnlyServices){
+  for(const when of ['now','soon'])for(const page of [1,2]){
+   const q=catalogQuery({service,type:'tv',when,page,ids:[9]});
+   assert.equal(q.get('with_networks'),originalNetworks[service]);
+   if(when==='now'){assert.equal(q.get('watch_region'),'US');assert.equal(q.get('with_watch_monetization_types'),'flatrate');}
+  }
+  assert(!isOriginalSeries({networks:[{id:2},{id:16}]},service)); // ABC/CBS
+  assert(!isOriginalSeries({networks:[{id:16},{id:6}]},service)); // CBS/NBC
+  assert(isOriginalSeries({networks:[{id:Number(originalNetworks[service].split('|')[0])}]},service));
+  assert(!isOriginalSeries({},service));
+ }
+ assert(!isOriginalSeries({networks:[{id:3353},{id:6}]},'peacock'));
+ assert(!isOriginalSeries({networks:[{id:4330},{id:16}]},'paramount'));
+ assert(isOriginalSeries({networks:[{id:67}]},'paramount')); // Keep requested Showtime originals
+ assert(!catalogQuery({service:'all',type:'tv'}).has('with_networks'));
+});
+test('movie originals require first-release evidence, never provider availability alone',()=>{
+ const release=(type,date,note='')=>({type,release_date:date+'T00:00:00.000Z',note});
+ const item=(releases,homepage='')=>({homepage,release_dates:{results:[{iso_3166_1:'US',release_dates:releases}]}});
+ assert(isOriginalMovie(item([release(1,'2026-09-01'),release(4,'2026-09-12','Prime Video')]),'prime'));
+ assert(isOriginalMovie(item([release(4,'2026-09-12','Hulu')]),'disney'));
+ assert(isOriginalMovie(item([release(4,'2026-09-12','internet')],'https://www.disneyplus.com/movies/togo/abc'),'disney'));
+ assert(!isOriginalMovie(item([release(4,'2026-09-12','internet')],'https://www.disneyplus.com.evil.test/movie'),'disney'));
+ assert(!isOriginalMovie(item([release(4,'2026-09-01','Netflix'),release(4,'2026-09-12','Prime Video')]),'prime'));
+ assert(!isOriginalMovie(item([release(3,'2026-09-01'),release(4,'2026-09-12','Prime Video')]),'prime'));
+ assert(!isOriginalMovie(item([release(6,'2026-09-01','ABC'),release(4,'2026-09-12','Hulu')]),'disney'));
+ assert(!isOriginalMovie(item([release(4,'2026-09-12','')]),'prime'));
+ assert(!isOriginalMovie({},'disney'));
+ assert(isOriginalMovie(item([release(2,'2026-09-01'),release(4,'2026-09-12','Prime Video')]),'prime'));
+ assert(!isOriginalMovie(item([release(2,'2026-01-01'),release(4,'2026-09-12','Prime Video')]),'prime'));
+});

@@ -44,7 +44,32 @@ export function activityDate(item,now=today()){
 export function recentActivityFirst(a,b){return activityDate(b).localeCompare(activityDate(a))||newestFirst(a,b);}
 export const legacyTheater={name:'Cinemark Legacy and XD',address:'7201 Central Expy, Suite 100 · Plano, TX 75025',url:'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd'};
 export const networkIds={food:'143',discovery:'64'};
-export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330',max:'49|3186',starz:'318'};
+export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67',max:'49|3186',starz:'318'};
+// Network affiliations identify series; movie premieres need separate release evidence.
+export const originalsOnlyServices=['prime','disney','paramount','peacock'];
+export const originalMovieServices=['prime','disney'];
+export function isOriginalSeries(item,service){
+  const broadcast=service==='paramount'?16:service==='peacock'?6:null;
+  if(broadcast&&(item.networks||[]).some(n=>n.id===broadcast))return false;
+  const ids=(originalNetworks[service]||'').split('|').map(Number);
+  return (item.networks||[]).some(n=>ids.includes(n.id));
+}
+export function isOriginalMovie(item,service){
+  if(!originalMovieServices.includes(service))return true;
+  const releases=(item.release_dates?.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates||[];
+  const dated=releases.filter(r=>/^\d{4}-\d{2}-\d{2}/.test(r.release_date||''));
+  const digital=dated.filter(r=>r.type===4).sort((a,b)=>a.release_date.localeCompare(b.release_date));
+  if(!digital.length)return false;
+  const first=digital[0].release_date.slice(0,10);
+  const debut=digital.filter(r=>r.release_date.slice(0,10)===first);
+  const name=service==='prime'?/\b(?:amazon|prime video)\b/i:/\b(?:hulu|disney\s*(?:\+|plus))/i;
+  let officialHomepage=false;
+  try{const host=new URL(item.homepage).hostname;officialHomepage=service==='prime'?/^(?:www\.)?(?:amazon\.com|primevideo\.com)$/.test(host):/^(?:www\.)?(?:disneyplus\.com|hulu\.com)$/.test(host);}catch{}
+  const identified=debut.some(r=>name.test(r.note||''))||(officialHomepage&&debut.every(r=>/^(?:internet|digital|streaming)?$/i.test((r.note||'').trim())));
+  if(!identified)return false;
+  // A later subscription window is not an original premiere. Allow a short awards run.
+  return !dated.some(r=>r.release_date.slice(0,10)<first&&(r.type===3||r.type===5||r.type===6||(r.type===2&&r.release_date.slice(0,10)<shiftedDate(first,-31))));
+}
 export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
 export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',page=1,ids=[]},now=today()){
   const params=new URLSearchParams({language:'en-US',with_original_language:'en',page});
@@ -69,6 +94,7 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
     params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types',service==='all'?'flatrate|free|ads':'flatrate');
     if(service==='max'&&type==='tv'&&networkIds[network])params.set('with_networks',networkIds[network]);
   }
+  if(type==='tv'&&originalsOnlyServices.includes(service))params.set('with_networks',originalNetworks[service]);
   if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
   if(kind==='movie'){params.set('without_genres','99');params.set('without_keywords','9716');}
   return params;
