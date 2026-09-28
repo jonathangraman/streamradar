@@ -130,6 +130,8 @@ test('original series filter keeps service networks and excludes broadcast catal
   assert(isOriginalSeries({networks:[{id:Number(originalNetworks[service].split('|')[0])}]},service));
   assert(!isOriginalSeries({},service));
  }
+ assert(!isOriginalSeries({networks:[{id:3353},{id:6}],first_air_date:'1965-11-08'},'peacock'));
+ assert(isOriginalSeries({networks:[{id:3353},{id:6}],first_air_date:'2023-01-12'},'peacock'));
  assert(!isOriginalSeries({networks:[{id:3353},{id:6}]},'peacock'));
  assert(!isOriginalSeries({networks:[{id:4330},{id:16}]},'paramount'));
  assert(isOriginalSeries({networks:[{id:67}]},'paramount')); // Keep requested Showtime originals
