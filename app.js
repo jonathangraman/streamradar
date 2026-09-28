@@ -11,7 +11,7 @@ const items=new Map(),cache=new Map(),sequence=createSequence(),detailSequence=c
 const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['keywords','seasons','genres','last_episode_to_air','next_episode_to_air'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
 const image=(path,size='w342')=> typeof path==='string'&&/^\/[\w.\/-]+$/.test(path)?IMG+size+path:'';
 function poster(item){const src=image(item.poster);return src?`<img src="${src}" alt="" loading="lazy">`:'<div class="no-img" aria-hidden="true">🎬</div>';}
-function tags(item){return contentLabels(item).map(label=>`<span class="content-tag tag-${label.kind}"${label.description?` title="${esc(label.description)}"`:''}>${esc(label.text)}</span>`).join('');}
+function tags(item,placement){return contentLabels(item).filter(label=>!placement||(placement==='poster'?label.kind==='season':label.kind!=='season')).map(label=>`<span class="content-tag tag-${label.kind}"${label.description?` title="${esc(label.description)}"`:''}>${esc(label.text)}</span>`).join('');}
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),4500);}
 function errorHTML(message,retry){return `<div class="empty"><p class="error-text">${esc(message)}</p>${retry?`<button class="btn-retry" data-action="${retry}">Try again</button>`:''}</div>`;}
 async function json(url,{signal}={}){
@@ -74,7 +74,7 @@ function renderServices(){
   const selected=$('svcs').querySelector('.on');if(selected)$('svcs').parentElement.scrollLeft=Math.max(0,selected.offsetLeft-20);
   document.querySelectorAll('[data-action="type"]').forEach(b=>{const on=b.dataset.type===type;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.disabled=(service==='theaters'&&b.dataset.type==='tv')||(service==='max'&&network!=='all'&&when==='now'&&b.dataset.type==='movie');});
 }
-function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item)}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate(item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
+function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${tags(item,'poster')}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate(item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
 async function loadCatalog(more=false){
   const request=sequence.next(),wanted={type,service,region,kind,when,network,page:more?page+1:1};loading=true;
   searchController?.abort();if(!more){page=1;results=[];$('grid').innerHTML='<div class="loading" role="status">Loading titles…</div>';}
@@ -134,7 +134,8 @@ async function enrichLabels(titles,request){
     if(!sequence.current(request))return;
     const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres,last_episode_to_air:detail.last_episode_to_air,next_episode_to_air:detail.next_episode_to_air});
     const node=$('grid').querySelector(`[data-key="${keyOf(item)}"] .card-tags`);
-    if(node)node.innerHTML=tags(enriched);
+    if(node)node.innerHTML=tags(enriched,'body');
+    const overlay=$('grid').querySelector(`[data-key="${keyOf(item)}"] .poster-tags`);if(overlay)overlay.innerHTML=tags(enriched,'poster');
   });
 }
 function clearSearch(){clearTimeout(searchTimer);searchController?.abort();sequence.next();$('home-search-input').value='';$('home-search-clear').hidden=true;$('browse-controls').hidden=false;$('home-tabs').hidden=false;renderServices();loadCatalog();$('home-search-input').focus();}
@@ -269,7 +270,7 @@ document.addEventListener('click',async event=>{
     if(a==='detail')showRoute({view:'detail',key});else if(a==='actor')showRoute({view:'actor',id:Number(b.dataset.id)});
     else if(['home','watchlist','foryou','about'].includes(a))showRoute({view:a});else if(a==='back')goBack();
     else if(['watch','seen','remove-seen','rate','dismiss'].includes(a))mutate(a,key,Number(b.dataset.stars));
-    else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';if(kind==='tv')kind='movie';}renderServices();loadCatalog();}
+    else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';kind='movie';}renderServices();loadCatalog();}
     else if(a==='type'){type=b.dataset.type;renderServices();loadCatalog();}
     else if(a==='clear-search')clearSearch();else if(a==='retry-search')search($('home-search-input').value.trim());
     else if(a==='retry-catalog')loadCatalog();else if(a==='more'&&!loading)loadCatalog(true);
@@ -285,7 +286,7 @@ document.addEventListener('click',async event=>{
 $('home-search-input').addEventListener('input',onSearch);
 $('home-search-input').addEventListener('keydown',e=>{if(e.key==='Escape'){clearSearch();}if(e.key==='Enter'){clearTimeout(searchTimer);search($('home-search-input').value.trim());}});
 
-$('when').addEventListener('change',()=>{when=$('when').value;network='all';if(when==='soon'&&['movie','tv'].includes(kind))kind='all';renderServices();loadCatalog();});
+$('when').addEventListener('change',()=>{when=$('when').value;network='all';if(when==='soon'&&service!=='theaters'&&['movie','tv'].includes(kind))kind='all';renderServices();loadCatalog();});
 $('network').addEventListener('change',()=>{network=$('network').value;if(network!=='all'){type='tv';kind='tv';}renderServices();loadCatalog();});
 $('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{

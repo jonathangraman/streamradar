@@ -288,3 +288,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 #home-tabs{display:none!important}.card-body>.card-tags{margin:0 0 6px}.tag-next{background:#dcc5f5;color:#40265b}.card-tags:empty{margin:0}.content-tag{font-size:9px;line-height:1.4}
 
 .pick-filters{padding:0;margin-bottom:16px;grid-template-columns:repeat(2,minmax(0,1fr))}.rec-actions{display:flex;gap:8px;flex-wrap:wrap}.rec-actions .text-button{min-height:44px}.rec-actions [data-action="watch"]{border-color:#d05266;background:#57262f}.rec-actions [data-action="dismiss"]{color:#c2cad9}.fy-scroll>.data-note{margin:0 0 18px}
+
+.poster-tags{position:absolute;top:7px;left:6px;right:6px;z-index:2;display:flex;pointer-events:none}.poster-tags .tag-season{font-size:9px;padding:4px 6px;border-radius:5px;box-shadow:0 2px 8px #0008}.poster-tags:empty{display:none}.poster-tags:has(.tag-season)~.badge-wl{top:32px}.rec-card .poster-tags{left:4px;right:4px}.rec-card .poster-tags .tag-season{font-size:8px;padding:3px}
