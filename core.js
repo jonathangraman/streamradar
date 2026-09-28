@@ -25,14 +25,14 @@ export function contentLabels(item, now=today()) {
   const labels=[];
   if(isStandup(item))labels.push({kind:'standup',text:'STAND-UP'});
   if((item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(99))labels.push({kind:'doc',text:'DOC'});
-  const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-30);
+  const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-90);
   const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=cutoff.toISOString().slice(0,10)).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
   if(season)labels.push({kind:'season',text:'NEW SEASON',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
   const episode=item.last_episode_to_air, week=new Date(now+'T12:00:00Z');week.setUTCDate(week.getUTCDate()-7);
-  const weekday=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).toUpperCase();
-  if(episode?.season_number>0&&episode?.episode_number>0&&episode.air_date<=now&&episode.air_date>=week.toISOString().slice(0,10))labels.push({kind:'episode',text:`NEW EPISODE · ${weekday(episode.air_date)}`,description:`S${episode.season_number} E${episode.episode_number} aired ${formatDate(episode.air_date)}; streaming availability may vary.`});
+  const weekday=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).toUpperCase()+' '+Number(date.slice(5,7))+'/'+Number(date.slice(8,10));
   const next=item.next_episode_to_air;
-  if(next?.season_number>0&&next?.air_date>now&&next.air_date<=shiftedDate(now,7))labels.push({kind:'next',text:`NEXT EPISODE · ${weekday(next.air_date)}`,description:`S${next.season_number} E${next.episode_number} expected ${formatDate(next.air_date)}; streaming availability may vary.`});
+  if(next?.season_number>0&&next?.episode_number>0&&next?.air_date>=now&&next.air_date<=shiftedDate(now,7))labels.push({kind:'next',text:`NEXT EP · ${weekday(next.air_date)}`,description:`S${next.season_number} E${next.episode_number} expected ${formatDate(next.air_date)}; streaming availability may vary.`});
+  else if(episode?.season_number>0&&episode?.episode_number>0&&episode.air_date<=now&&episode.air_date>=week.toISOString().slice(0,10))labels.push({kind:'episode',text:`NEW EP · AIRED ${weekday(episode.air_date)}`,description:`S${episode.season_number} E${episode.episode_number} aired ${formatDate(episode.air_date)}; streaming availability may vary.`});
   return labels;
 }
 export function activityDate(item,now=today()){

@@ -8,6 +8,16 @@ import {matchesPick,pickKeyword} from '../core.js';
 import {isEnglish} from '../core.js';
 import {keyOf,parseRoute,normalize,escapeHTML,formatDate,isStandup,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,providerIds} from '../core.js';
 const movie={id:161,type:'movie',title:"Ocean's Eleven",date:'2001-12-07'};
+test('season badge includes day 90 but excludes day 91 and future season premieres',()=>{
+ const now='2026-09-28',label=air_date=>contentLabels({seasons:[{season_number:2,air_date}]},now).some(x=>x.kind==='season');
+ assert(label(shiftedDate(now,-90)));assert(!label(shiftedDate(now,-91)));assert(label(now));assert(!label(shiftedDate(now,1)));
+});
+test('weekly episodes produce a single dated pill, including scheduled episodes today',()=>{
+ const item={last_episode_to_air:{season_number:2,episode_number:1,air_date:'2026-09-23'},next_episode_to_air:{season_number:2,episode_number:2,air_date:'2026-09-30'}};
+ assert.deepEqual(contentLabels(item,'2026-09-28').map(x=>x.text),['NEXT EP · WED 9/30']);
+ assert.deepEqual(contentLabels(item,'2026-09-30').map(x=>x.text),['NEXT EP · WED 9/30']);
+ assert.deepEqual(contentLabels({...item,next_episode_to_air:null},'2026-09-28').map(x=>x.text),['NEW EP · AIRED WED 9/23']);
+});
 test('English-only uses original language, never translated title or country',()=>{
  assert(isEnglish({original_language:'en',origin_country:['GB']}));
  assert(!isEnglish({title:'An English title',original_language:'ko'}));assert(!isEnglish({title:'Unknown language'}));
@@ -29,7 +39,7 @@ test('a returning series ranks by its new episode or season rather than its orig
  const film={id:2,type:'movie',date:'2026-09-26'};
  assert.equal(activityDate(returning,'2026-09-28'),'2026-09-27');assert.equal([film,returning].sort(recentActivityFirst)[0].id,1);
  assert.equal(activityDate({...returning,last_episode_to_air:null,seasons:[{season_number:2,air_date:'2026-09-28'},{season_number:3,air_date:'2027-01-01'}]},'2026-09-28'),'2026-09-28');
- const labels=contentLabels(returning,'2026-09-28');assert(labels.some(x=>x.text==='NEW EPISODE · SUN'));assert(labels.some(x=>x.text==='NEXT EPISODE · THU'));
+ const labels=contentLabels(returning,'2026-09-28');assert.equal(labels.filter(x=>['episode','next'].includes(x.kind)).length,1);assert(labels.some(x=>x.text==='NEXT EP · THU 10/1'));
 });
 test('theatrical browsing separates current wide releases from upcoming US releases',()=>{
  const now=catalogQuery({service:'theaters'},'2026-09-28'),soon=catalogQuery({service:'theaters',when:'soon'},'2026-09-28');
@@ -63,7 +73,7 @@ test('newest discovery excludes future titles and keeps pagination ordered by re
 test('content badges cover both API genre formats and only recently premiered returning seasons',()=>{
  assert.equal(contentLabels({genres:[{id:99}]}).some(x=>x.kind==='doc'),true);
  assert.equal(contentLabels({genre_ids:[99]}).some(x=>x.kind==='doc'),true);
- const seasons=[{season_number:0,air_date:'2026-09-27'},{season_number:1,air_date:'2026-09-27'},{season_number:2,air_date:'2026-07-01'},{season_number:3,air_date:'2026-10-01'}];
+ const seasons=[{season_number:0,air_date:'2026-09-27'},{season_number:1,air_date:'2026-09-27'},{season_number:2,air_date:'2026-06-01'},{season_number:3,air_date:'2026-10-01'}];
  assert.equal(contentLabels({seasons},'2026-09-28').length,0);
  assert.equal(contentLabels({seasons:[...seasons,{season_number:4,air_date:'2026-09-01'}]},'2026-09-28')[0].text,'NEW SEASON');
 });
