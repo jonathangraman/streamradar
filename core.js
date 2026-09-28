@@ -191,3 +191,15 @@ export function providerIds(catalog, service) {
   const def=serviceDefinitions.find(x=>x.id===service);
   return catalog.filter(p=>def?.match(p.provider_name)).map(p=>p.provider_id);
 }
+
+export function unseenTitles(titles,library,hide=true){const seen=new Set((library.seen||[]).map(keyOf));return hide?titles.filter(x=>!seen.has(keyOf(x))):titles;}
+export const pickMoods=[{id:'all',label:'Any mood'},{id:'fun',label:'Light & funny'},{id:'tense',label:'Suspenseful'},{id:'thoughtful',label:'Thoughtful'},{id:'adventure',label:'Adventure'}];
+export function pickMoodGenres(mood,type){const ids={fun:[35],tense:[53,27,80,9648],thoughtful:[18,99],adventure:[12,28,10759,10765]}[mood]||[];return type==='tv'?ids.filter(n=>![53,27,12,28].includes(n)):ids.filter(n=>![10759,10765].includes(n));}
+export function matchesPickControls(item,{score=0,runtime=0,mood='all'}={}){
+ if(score>0&&(!(item.vote_count>=20)||!(item.vote_average>=score)))return false;
+ const minutes=item.type==='tv'?(item.episode_run_time||[]).find(n=>n>0):item.runtime;
+ if(runtime>0&&(!(minutes>0)||minutes>runtime))return false;
+ const genres=item.genre_ids||item.genres?.map(g=>g.id)||[];
+ const moodIds=pickMoodGenres(mood,item.type);return !moodIds.length||moodIds.some(id=>genres.includes(id));
+}
+export function pickSubscriptionOffers(offers,services=[]){return (offers?.flatrate||[]).filter(p=>!services.length||services.some(id=>serviceDefinitions.find(s=>s.id===id)?.match(p.provider_name)));}

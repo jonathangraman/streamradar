@@ -172,3 +172,23 @@ test('upcoming titles rank by a future season premiere, excluding ordinary episo
  for(const air_date of ['',now,'2026-12-28'])assert.equal(upcomingPremiere({first_air_date:'2020-01-01',seasons:[{season_number:2,air_date}]},now),null);
  assert.deepEqual(upcomingPremiere({...item,next_episode_to_air:{season_number:3,episode_number:1,air_date:'2026-12-05'}},now),{date:'2026-12-05',season:3});
 });
+
+import {unseenTitles,matchesPickControls,pickSubscriptionOffers} from '../core.js';
+test('hide watched uses movie/series identity and can be turned off without changing the library',()=>{
+ const titles=[{id:1,type:'movie'},{id:1,type:'tv'},{id:2,type:'movie'}],library={seen:[titles[0]]};
+ assert.deepEqual(unseenTitles(titles,library),titles.slice(1));assert.deepEqual(unseenTitles(titles,library,false),titles);assert.equal(library.seen.length,1);
+});
+test('recommendation controls exclude unknown score/runtime and match TV episode duration and moods',()=>{
+ const film={type:'movie',runtime:90,vote_average:7.5,vote_count:100,genre_ids:[35]};
+ assert(matchesPickControls(film,{score:7,runtime:90,mood:'fun'}));
+ assert(!matchesPickControls(film,{score:8}));assert(!matchesPickControls({...film,vote_count:2},{score:7}));
+ assert(!matchesPickControls({...film,runtime:0},{runtime:120}));assert(!matchesPickControls(film,{mood:'tense'}));
+ assert(matchesPickControls({type:'tv',episode_run_time:[45],genres:[{id:9648}]},{runtime:60,mood:'tense'}));
+ assert(!matchesPickControls({type:'tv',runtime:30},{runtime:60}));
+});
+test('selected subscriptions exclude rental and channel add-on offers from recommendations',()=>{
+ const offers={flatrate:[{provider_name:'Amazon Prime Video'},{provider_name:'Starz Amazon Channel'},{provider_name:'Starz'}],rent:[{provider_name:'Netflix'}]};
+ assert.deepEqual(pickSubscriptionOffers(offers,['starz']).map(x=>x.provider_name),['Starz']);
+ assert.deepEqual(pickSubscriptionOffers(offers,['prime','starz']).map(x=>x.provider_name),['Amazon Prime Video','Starz']);
+ assert.equal(pickSubscriptionOffers(offers,['netflix']).length,0);assert.equal(pickSubscriptionOffers(null,['prime']).length,0);
+});
