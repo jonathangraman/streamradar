@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {contentLabels,newestFirst,discoveryOrder} from '../core.js';
-import {catalogQuery,shiftedDate,legacyTheater,activityDate,recentActivityFirst} from '../core.js';
+import {catalogQuery,shiftedDate,normalizeZip,theaterURL,activityDate,recentActivityFirst} from '../core.js';
 import {matchesPick,pickKeyword} from '../core.js';
 import {isEnglish} from '../core.js';
 import {isNarrativeMovie} from '../core.js';
@@ -54,7 +54,6 @@ test('theatrical browsing separates current wide releases from upcoming US relea
  const now=catalogQuery({service:'theaters'},'2026-09-28'),soon=catalogQuery({service:'theaters',when:'soon'},'2026-09-28');
  assert.equal(now.get('region'),'US');assert.equal(now.get('with_release_type'),'3');assert.equal(now.get('release_date.lte'),'2026-09-28');assert.equal(now.has('watch_region'),false);assert.equal(now.get('sort_by'),'popularity.desc');
  assert.equal(soon.get('release_date.gte'),'2026-09-29');assert.equal(soon.get('release_date.lte'),'2026-12-27');assert.equal(soon.get('sort_by'),'popularity.desc');assert.equal(soon.get('primary_release_date.gte'),'2026-04-01');assert.equal(soon.get('with_original_language'),'en');
- assert.equal(legacyTheater.url,'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd');
 });
 test('network filters require both HBO availability and the requested original network',()=>{
  const q=catalogQuery({type:'tv',service:'max',network:'food',ids:[1899]},'2026-09-28');
@@ -222,4 +221,10 @@ test('related recommendations keep their reason, aggregate support and outrank d
  const ranks=rankRecommendations([related,other,{...related,affinity:2},{id:2,type:'movie',affinity:0,reason:'Generic'},{id:4,type:'movie',affinity:0,vote_average:10}],[seed],new Set(['movie:2']));
  assert.deepEqual(ranks.map(x=>x.id),[2,3,4]);assert.equal(ranks[0].affinity,6);assert.equal(ranks[0].reason,related.reason);
  assert.equal(rankRecommendations([{...related,id:2},{...related,id:3}],[seed],new Set(['movie:2']))[0].id,3);
+});
+
+test('theater ZIP links preserve leading zeros and reject malformed input',()=>{
+ assert.equal(normalizeZip(' 02108 '),'02108');assert.equal(theaterURL('02108'),'https://www.fandango.com/02108_movietimes');
+ assert.equal(theaterURL('90210'),'https://www.fandango.com/90210_movietimes');
+ for(const zip of ['',null,2108,'00000','1234','123456','ABCDE','75025/evil','<script>'])assert.equal(theaterURL(zip),'');
 });
