@@ -1,9 +1,10 @@
-import {browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
 let library=emptyLibrary(),type='movie',service='all',kind='all',genre='all',when='now',network='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
 const region='US';
+let theaterZip=normalizeZip(readJSON('sr_theater_zip',''));
 const preferences=readJSON('sr_preferences_v1',{});
 let hideWatched=preferences.hideWatched!==false;
 let pickMedia=['all','movie','tv'].includes(preferences.media)?preferences.media:'all',pickGenre=pickGenres.some(g=>g.id===preferences.genre)?preferences.genre:'all';
@@ -74,7 +75,7 @@ function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(l
 function renderServices(){
   $('network-filter').hidden=service!=='max'||when==='soon';
   $('network').value=network;
-  $('theater-info').hidden=service!=='theaters';
+  $('theater-info').hidden=service!=='theaters';renderTheaterPanels();
   $('home-tabs').hidden=true;
   $('kind').querySelector('[value="tv"]').disabled=service==='theaters';
   $('kind').value=kind;
@@ -211,6 +212,23 @@ function goBack(){if(historyDepth>0)history.back();else showRoute({view:'home'},
 window.addEventListener('popstate',e=>{historyDepth=e.state?.depth||0;showRoute(e.state?.view?e.state:parseRoute(location.hash),false);});
 history.replaceState({...initialRoute,depth:0},'','#'+initialRoute.view+(initialRoute.key?'/'+initialRoute.key:initialRoute.id?'/'+initialRoute.id:''));
 
+function theaterPanelHTML(scope,editing=false){
+  const form=!theaterZip||editing;
+  return '<h2>Find theaters near you</h2>'+ (form?
+    '<form class="zip-form" data-zip-form="'+scope+'"><label for="'+scope+'-zip">US ZIP code</label><div class="zip-controls"><input id="'+scope+'-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="Enter ZIP code" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save ZIP</button></div></form><small>Enter five digits. Saved on this browser.</small>':
+    '<p>Theaters near <strong>'+theaterZip+'</strong> <button class="text-button" data-action="change-zip">Change ZIP</button></p><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Find nearby theaters & showtimes ↗</a>')+
+    '<small>'+(scope==='home'?'Titles below are US theatrical releases. ':'')+'Choose a theater and movie on Fandango to check local showtimes.</small>';
+}
+function renderTheaterPanels(){document.querySelectorAll('[data-theater-scope]').forEach(panel=>{panel.innerHTML=theaterPanelHTML(panel.dataset.theaterScope);});}
+document.addEventListener('submit',event=>{
+  const form=event.target.closest('[data-zip-form]');if(!form)return;event.preventDefault();
+  const input=form.elements.zip,zip=normalizeZip(input.value);
+  if(!zip){input.setCustomValidity('Enter a valid five-digit US ZIP code.');input.reportValidity();return;}
+  try{localStorage.setItem('sr_theater_zip',JSON.stringify(zip));theaterZip=zip;renderTheaterPanels();
+    document.querySelector('[data-theater-scope="'+form.dataset.zipForm+'"] .showtime-link')?.focus();toast('ZIP code saved.');
+  }catch{toast('Could not save your ZIP code. Please check browser storage and try again.');}
+});
+document.addEventListener('input',event=>{if(event.target.matches('[data-zip-form] input'))event.target.setCustomValidity('');});
 function ratingControl(item){const value=library.ratings[keyOf(item)]||0;return `<fieldset class="rating-control"><legend>${value?'Your rating: '+value+' of 5':'Rate and mark as seen'}</legend>${[1,2,3,4,5].map(n=>`<button class="${n<=value?'on':''}" data-action="rate" data-key="${keyOf(item)}" data-stars="${n}" aria-label="Rate ${esc(item.title)} ${n} of 5 stars" aria-pressed="${value===n}">★</button>`).join('')}</fieldset>`;}
 function renderDetailActions(){if(!detailItem)return;const target=$('detail-actions');if(!target)return;const key=keyOf(detailItem),saved=library.watchlist.some(x=>keyOf(x)===key),date=detailItem.next_episode_to_air?.air_date||detailItem.date;
   target.innerHTML=`<div class="det-actions"><button class="btn-main" data-action="watch" data-key="${key}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="btn-ico" data-action="seen" data-key="${key}">Seen It</button><button class="btn-ico" data-action="similar" data-key="${key}"${recommending?' disabled':''}>Find similar titles</button>${date>=today()?`<button class="btn-ico" data-action="calendar" data-key="${key}">Add to calendar</button>`:''}</div>${ratingControl(detailItem)}`;
@@ -221,7 +239,7 @@ async function loadDetail(key){
   try{
     const raw=await api(`/${media}/${id}?language=en-US&append_to_response=credits,keywords`);
     if(!detailSequence.current(request))return;detailItem=remember(normalize(raw,media));const item=detailItem;
-    $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div>${media==='movie'?`<section class="showtime-panel"><p class="person-eyebrow">YOUR THEATER</p><h2>${legacyTheater.name}</h2><p>${legacyTheater.address}</p><a class="showtime-link" href="${legacyTheater.url}" target="_blank" rel="noopener noreferrer">Check live showtimes & tickets ↗</a><small>Browse the theater’s current schedule.</small></section>`:''}<div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div><p class="det-overview">${esc(raw.overview||'No description available.')}</p><div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
+    $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div>${media==='movie'?`<section class="showtime-panel" data-theater-scope="detail">${theaterPanelHTML('detail')}</section>`:''}<div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div><p class="det-overview">${esc(raw.overview||'No description available.')}</p><div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
     renderDetailActions();$('det-inner').querySelector('h1').focus({preventScroll:true});
     // Optional services must never block the primary title or each other.
     loadOffers(item,request);loadScores(item,request);
@@ -322,7 +340,8 @@ document.addEventListener('click',async event=>{
   const b=event.target.closest('[data-action]');if(!b||b.disabled)return;
   const a=b.dataset.action,key=b.dataset.key;
   try{
-    if(a==='detail')showRoute({view:'detail',key});else if(a==='actor')showRoute({view:'actor',id:Number(b.dataset.id)});
+    if(a==='change-zip'){const panel=b.closest('[data-theater-scope]');panel.innerHTML=theaterPanelHTML(panel.dataset.theaterScope,true);panel.querySelector('input').focus();}
+    else if(a==='detail')showRoute({view:'detail',key});else if(a==='actor')showRoute({view:'actor',id:Number(b.dataset.id)});
     else if(['home','watchlist','foryou','about'].includes(a))showRoute({view:a});else if(a==='back')goBack();
     else if(['watch','seen','remove-seen','rate','dismiss'].includes(a))mutate(a,key,Number(b.dataset.stars));
     else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';kind='movie';}renderServices();loadCatalog();}

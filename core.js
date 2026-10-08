@@ -42,7 +42,8 @@ export function activityDate(item,now=today()){
   return dates.filter(d=>d&&d<=now).sort().at(-1)||item.date||'';
 }
 export function recentActivityFirst(a,b){return activityDate(b).localeCompare(activityDate(a))||newestFirst(a,b);}
-export const legacyTheater={name:'Cinemark Legacy and XD',address:'7201 Central Expy, Suite 100 · Plano, TX 75025',url:'https://www.cinemark.com/theatres/tx-plano/cinemark-legacy-and-xd'};
+export function normalizeZip(value){const zip=typeof value==='string'?value.trim():'';return /^\d{5}$/.test(zip)&&zip!=='00000'?zip:'';}
+export function theaterURL(value){const zip=normalizeZip(value);return zip?'https://www.fandango.com/'+zip+'_movietimes':'';}
 export const networkIds={food:'143',discovery:'64'};
 export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67',max:'49|3186',starz:'318',mgm:'6219|922'};
 // Network affiliations identify series; movie premieres need separate release evidence.
