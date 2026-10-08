@@ -1,4 +1,4 @@
-const CACHE='streamradar-shell-20260928-12';
+const CACHE='streamradar-shell-20261008-2';
 const SHELL=['/','/index.html','/styles.css','/app.js','/core.js','/legacy-config.js','/manifest.json'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('streamradar-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

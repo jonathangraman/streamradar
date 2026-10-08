@@ -173,22 +173,53 @@ test('upcoming titles rank by a future season premiere, excluding ordinary episo
  assert.deepEqual(upcomingPremiere({...item,next_episode_to_air:{season_number:3,episode_number:1,air_date:'2026-12-05'}},now),{date:'2026-12-05',season:3});
 });
 
-import {unseenTitles,matchesPickControls,pickSubscriptionOffers} from '../core.js';
+import {unseenTitles,pickSubscriptionOffers,matchesPickYear,rankRecommendations} from '../core.js';
 test('hide watched uses movie/series identity and can be turned off without changing the library',()=>{
  const titles=[{id:1,type:'movie'},{id:1,type:'tv'},{id:2,type:'movie'}],library={seen:[titles[0]]};
  assert.deepEqual(unseenTitles(titles,library),titles.slice(1));assert.deepEqual(unseenTitles(titles,library,false),titles);assert.equal(library.seen.length,1);
 });
-test('recommendation controls exclude unknown score/runtime and match TV episode duration and moods',()=>{
- const film={type:'movie',runtime:90,vote_average:7.5,vote_count:100,genre_ids:[35]};
- assert(matchesPickControls(film,{score:7,runtime:90,mood:'fun'}));
- assert(!matchesPickControls(film,{score:8}));assert(!matchesPickControls({...film,vote_count:2},{score:7}));
- assert(!matchesPickControls({...film,runtime:0},{runtime:120}));assert(!matchesPickControls(film,{mood:'tense'}));
- assert(matchesPickControls({type:'tv',episode_run_time:[45],genres:[{id:9648}]},{runtime:60,mood:'tense'}));
- assert(!matchesPickControls({type:'tv',runtime:30},{runtime:60}));
-});
+
 test('selected subscriptions exclude rental and channel add-on offers from recommendations',()=>{
  const offers={flatrate:[{provider_name:'Amazon Prime Video'},{provider_name:'Starz Amazon Channel'},{provider_name:'Starz'}],rent:[{provider_name:'Netflix'}]};
  assert.deepEqual(pickSubscriptionOffers(offers,['starz']).map(x=>x.provider_name),['Starz']);
  assert.deepEqual(pickSubscriptionOffers(offers,['prime','starz']).map(x=>x.provider_name),['Amazon Prime Video','Starz']);
  assert.equal(pickSubscriptionOffers(offers,['netflix']).length,0);assert.equal(pickSubscriptionOffers(null,['prime']).length,0);
+});
+
+import {matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers} from '../core.js';
+test('browse genre filters map movie genres and TV keywords across current and future queries',()=>{
+ for(const when of ['now','soon'])for(const page of [1,2]){
+  assert.equal(catalogQuery({type:'movie',genre:'horror',when,page}).get('with_genres'),'27');
+  const tv=catalogQuery({type:'tv',service:'prime',genre:'horror',when,page});assert.equal(tv.get('with_keywords'),'315058');assert.equal(tv.get('with_networks'),'1024');
+ }
+ assert.equal(upcomingSeasonQuery({service:'starz',genre:'comedy'}).get('with_genres'),'35');
+ assert.equal(catalogQuery({type:'tv',genre:'action'}).get('with_genres'),'10759');
+ assert.equal(catalogQuery({type:'movie',genre:'scifi'}).get('with_genres'),'878|14');
+ assert.equal(catalogQuery({type:'tv',kind:'standup',genre:'horror'}).get('with_keywords'),'9716,315058');
+ assert(matchesBrowseGenre({type:'tv',keywords:{results:[{id:315058}]}},'horror'));
+ assert(!matchesBrowseGenre({type:'tv',genre_ids:[18]},'horror'));
+ assert(matchesBrowseGenre({type:'movie',genre_ids:[14]},'scifi'));
+});
+test('verified US corrections are title-specific, dated and do not duplicate upstream offers',()=>{
+ const item={type:'tv',id:288673},now='2026-10-08';
+ assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-08').length,0);
+ assert.equal(withVerifiedUSOffers(item,{},now).flatrate[0].provider_name,'Amazon Prime Video');
+ assert.equal(withVerifiedUSOffers({type:'movie',id:288673},{},now).flatrate.length,0);
+ assert.equal(withVerifiedUSOffers(item,{flatrate:[{provider_id:9,provider_name:'Amazon Prime Video'}]},now).flatrate.length,1);
+});
+
+test('year filters use original release or series premiere and reject unknown dates',()=>{
+ assert(matchesPickYear({date:'1995-12-15'},'1995'));
+ assert(!matchesPickYear({date:'1996-01-01'},'1995'));
+ assert(matchesPickYear({first_air_date:'2020-01-01',last_air_date:'2026-01-01'},'2020'));
+ assert(!matchesPickYear({first_air_date:'2020-01-01',last_air_date:'2026-01-01'},'2026'));
+ assert(!matchesPickYear({},'2020'));assert(matchesPickYear({},'all'));
+});
+test('related recommendations keep their reason, aggregate support and outrank discoveries',()=>{
+ const seed={id:1,type:'movie',genre_ids:[80,53]};
+ const related={id:2,type:'movie',genre_ids:[80,53],relatedTo:'movie:1',affinity:4,reason:'Because you liked a cop movie'};
+ const other={id:3,type:'movie',genre_ids:[35],affinity:4};
+ const ranks=rankRecommendations([related,other,{...related,affinity:2},{id:2,type:'movie',affinity:0,reason:'Generic'},{id:4,type:'movie',affinity:0,vote_average:10}],[seed],new Set(['movie:2']));
+ assert.deepEqual(ranks.map(x=>x.id),[2,3,4]);assert.equal(ranks[0].affinity,6);assert.equal(ranks[0].reason,related.reason);
+ assert.equal(rankRecommendations([{...related,id:2},{...related,id:3}],[seed],new Set(['movie:2']))[0].id,3);
 });

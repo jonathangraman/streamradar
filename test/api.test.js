@@ -12,7 +12,7 @@ test('English-only applies to discovery, search, recommendations and actor credi
  const original=global.fetch;process.env.TMDB_READ_TOKEN='test';let target;
  const titles=[{id:1,original_language:'en'},{id:2,original_language:'fr'},{id:3,title:'English translated name'}];
  global.fetch=async url=>{target=new URL(url);return {ok:true,json:async()=>({results:titles,cast:titles})};};
- try{for(const path of ['/discover/movie','/discover/tv','/search/movie','/search/tv','/movie/161/recommendations','/person/1461/combined_credits']){
+ try{for(const path of ['/discover/movie','/discover/tv','/search/movie','/search/tv','/movie/161/recommendations','/movie/161/similar','/tv/161/similar','/person/1461/combined_credits']){
    const r=response();await tmdb({method:'GET',url:'/api/tmdb?path='+path+'&with_original_language=fr'},r);assert.equal(r.code,200);
    assert.deepEqual((path.endsWith('/combined_credits')?r.body.cast:r.body.results).map(x=>x.id),[1]);
    if(path.startsWith('/discover/'))assert.equal(target.searchParams.get('with_original_language'),'en');

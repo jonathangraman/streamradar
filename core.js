@@ -74,7 +74,7 @@ export function isOriginalMovie(item,service){
   return !dated.some(r=>r.release_date.slice(0,10)<first&&(r.type===3||r.type===5||r.type===6||(r.type===2&&r.release_date.slice(0,10)<shiftedDate(first,-31))));
 }
 export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
-export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',page=1,ids=[]},now=today()){
+export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',genre='all',page=1,ids=[]},now=today()){
   const params=new URLSearchParams({language:'en-US',with_original_language:'en',page});
   if(service==='theaters'){
     params.set('region','US');params.set('with_release_type','3');
@@ -100,6 +100,9 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
   if(type==='tv'&&originalsOnlyServices.includes(service))params.set('with_networks',originalNetworks[service]);
   if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
   if(kind==='movie'){params.set('without_genres','99');params.set('without_keywords','9716');}
+  const filter=browseGenreFilter(genre,type);
+  if(filter.genres)params.set('with_genres',[params.get('with_genres'),filter.genres].filter(Boolean).join(','));
+  if(filter.keyword)params.set('with_keywords',[params.get('with_keywords'),filter.keyword].filter(Boolean).join(','));
   return params;
 }
 export function upcomingPremiere(item,now=today()){
@@ -193,13 +196,37 @@ export function providerIds(catalog, service) {
 }
 
 export function unseenTitles(titles,library,hide=true){const seen=new Set((library.seen||[]).map(keyOf));return hide?titles.filter(x=>!seen.has(keyOf(x))):titles;}
-export const pickMoods=[{id:'all',label:'Any mood'},{id:'fun',label:'Light & funny'},{id:'tense',label:'Suspenseful'},{id:'thoughtful',label:'Thoughtful'},{id:'adventure',label:'Adventure'}];
-export function pickMoodGenres(mood,type){const ids={fun:[35],tense:[53,27,80,9648],thoughtful:[18,99],adventure:[12,28,10759,10765]}[mood]||[];return type==='tv'?ids.filter(n=>![53,27,12,28].includes(n)):ids.filter(n=>![10759,10765].includes(n));}
-export function matchesPickControls(item,{score=0,runtime=0,mood='all'}={}){
- if(score>0&&(!(item.vote_count>=20)||!(item.vote_average>=score)))return false;
- const minutes=item.type==='tv'?(item.episode_run_time||[]).find(n=>n>0):item.runtime;
- if(runtime>0&&(!(minutes>0)||minutes>runtime))return false;
- const genres=item.genre_ids||item.genres?.map(g=>g.id)||[];
- const moodIds=pickMoodGenres(mood,item.type);return !moodIds.length||moodIds.some(id=>genres.includes(id));
-}
 export function pickSubscriptionOffers(offers,services=[]){return (offers?.flatrate||[]).filter(p=>!services.length||services.some(id=>serviceDefinitions.find(s=>s.id===id)?.match(p.provider_name)));}
+
+export const browseGenres=[{id:'all',label:'All genres'},{id:'action',label:'Action & Adventure'},{id:'animation',label:'Animation'},{id:'comedy',label:'Comedy'},{id:'crime',label:'Crime'},{id:'doc',label:'Documentaries'},{id:'drama',label:'Drama'},{id:'family',label:'Kids & Family'},{id:'horror',label:'Horror'},{id:'romance',label:'Romance'},{id:'scifi',label:'Sci-Fi & Fantasy'},{id:'thriller',label:'Thriller'},{id:'mystery',label:'Mystery'},{id:'western',label:'Westerns'}];
+export function browseGenreFilter(genre,type){
+ const movie={action:'28|12',animation:'16',comedy:'35',crime:'80',doc:'99',drama:'18',family:'10751',horror:'27',romance:'10749',scifi:'878|14',thriller:'53',mystery:'9648',western:'37'};
+ const keywords={horror:'315058',romance:'9840',thriller:'316362'};
+ if(type==='tv'&&keywords[genre])return {keyword:keywords[genre]};
+ return {genres:type==='tv'?({action:'10759',scifi:'10765'}[genre]||movie[genre]):movie[genre]};
+}
+export function matchesBrowseGenre(item,genre){const f=browseGenreFilter(genre,item.type);if(f.keyword)return (item.keywords?.keywords||item.keywords?.results||[]).some(k=>String(k.id)===f.keyword);return !f.genres||f.genres.split('|').some(id=>(item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(id)));}
+// Temporary, reviewed US availability corrections while provider indexing catches up.
+// Source: official Prime title page, verified 2026-10-08. Never infer US offers from a network alone.
+export const verifiedUSOffers=[{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
+export function activeVerifiedOffers(now=today()){return verifiedUSOffers.filter(x=>x.start<=now&&now<=x.reviewUntil);}
+export function withVerifiedUSOffers(item,offers={},now=today()){
+ const verified=activeVerifiedOffers(now).filter(x=>keyOf(x)===keyOf(item));
+ return {...offers,flatrate:[...(offers.flatrate||[]),...verified.filter(x=>!(offers.flatrate||[]).some(p=>p.provider_id===x.provider_id))]};
+}
+
+export function matchesPickYear(item,year='all'){
+ return year==='all'||String(item.date||item.release_date||item.first_air_date||'').slice(0,4)===String(year);
+}
+export function rankRecommendations(candidates,seeds=[],prior=new Set()){
+ const genres=item=>item.genre_ids||item.genres?.map(g=>g.id)||[];
+ const grouped=new Map();
+ for(const item of candidates){
+  if(!normalize(item))continue;
+  const key=keyOf(item),existing=grouped.get(key);
+  if(existing){existing.affinity+=item.affinity||0;if(!existing.relatedTo&&item.relatedTo){existing.reason=item.reason;existing.relatedTo=item.relatedTo;}}
+  else grouped.set(key,{...item,affinity:item.affinity||0});
+ }
+ const score=item=>item.affinity*10+(item.affinity?Math.max(0,...seeds.filter(s=>s.type===item.type).map(s=>genres(s).filter(g=>genres(item).includes(g)).length)):0);
+ return [...grouped.values()].sort((a,b)=>score(b)-score(a)||Number(prior.has(keyOf(a)))-Number(prior.has(keyOf(b)))||(b.vote_average||0)-(a.vote_average||0));
+}
