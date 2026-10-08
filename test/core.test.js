@@ -192,3 +192,25 @@ test('selected subscriptions exclude rental and channel add-on offers from recom
  assert.deepEqual(pickSubscriptionOffers(offers,['prime','starz']).map(x=>x.provider_name),['Amazon Prime Video','Starz']);
  assert.equal(pickSubscriptionOffers(offers,['netflix']).length,0);assert.equal(pickSubscriptionOffers(null,['prime']).length,0);
 });
+
+import {matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers} from '../core.js';
+test('browse genre filters map movie genres and TV keywords across current and future queries',()=>{
+ for(const when of ['now','soon'])for(const page of [1,2]){
+  assert.equal(catalogQuery({type:'movie',genre:'horror',when,page}).get('with_genres'),'27');
+  const tv=catalogQuery({type:'tv',service:'prime',genre:'horror',when,page});assert.equal(tv.get('with_keywords'),'315058');assert.equal(tv.get('with_networks'),'1024');
+ }
+ assert.equal(upcomingSeasonQuery({service:'starz',genre:'comedy'}).get('with_genres'),'35');
+ assert.equal(catalogQuery({type:'tv',genre:'action'}).get('with_genres'),'10759');
+ assert.equal(catalogQuery({type:'movie',genre:'scifi'}).get('with_genres'),'878|14');
+ assert.equal(catalogQuery({type:'tv',kind:'standup',genre:'horror'}).get('with_keywords'),'9716,315058');
+ assert(matchesBrowseGenre({type:'tv',keywords:{results:[{id:315058}]}},'horror'));
+ assert(!matchesBrowseGenre({type:'tv',genre_ids:[18]},'horror'));
+ assert(matchesBrowseGenre({type:'movie',genre_ids:[14]},'scifi'));
+});
+test('verified US corrections are title-specific, dated and do not duplicate upstream offers',()=>{
+ const item={type:'tv',id:288673},now='2026-10-08';
+ assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-08').length,0);
+ assert.equal(withVerifiedUSOffers(item,{},now).flatrate[0].provider_name,'Amazon Prime Video');
+ assert.equal(withVerifiedUSOffers({type:'movie',id:288673},{},now).flatrate.length,0);
+ assert.equal(withVerifiedUSOffers(item,{flatrate:[{provider_id:9,provider_name:'Amazon Prime Video'}]},now).flatrate.length,1);
+});

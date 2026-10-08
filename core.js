@@ -74,7 +74,7 @@ export function isOriginalMovie(item,service){
   return !dated.some(r=>r.release_date.slice(0,10)<first&&(r.type===3||r.type===5||r.type===6||(r.type===2&&r.release_date.slice(0,10)<shiftedDate(first,-31))));
 }
 export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
-export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',page=1,ids=[]},now=today()){
+export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',genre='all',page=1,ids=[]},now=today()){
   const params=new URLSearchParams({language:'en-US',with_original_language:'en',page});
   if(service==='theaters'){
     params.set('region','US');params.set('with_release_type','3');
@@ -100,6 +100,9 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
   if(type==='tv'&&originalsOnlyServices.includes(service))params.set('with_networks',originalNetworks[service]);
   if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
   if(kind==='movie'){params.set('without_genres','99');params.set('without_keywords','9716');}
+  const filter=browseGenreFilter(genre,type);
+  if(filter.genres)params.set('with_genres',[params.get('with_genres'),filter.genres].filter(Boolean).join(','));
+  if(filter.keyword)params.set('with_keywords',[params.get('with_keywords'),filter.keyword].filter(Boolean).join(','));
   return params;
 }
 export function upcomingPremiere(item,now=today()){
@@ -203,3 +206,20 @@ export function matchesPickControls(item,{score=0,runtime=0,mood='all'}={}){
  const moodIds=pickMoodGenres(mood,item.type);return !moodIds.length||moodIds.some(id=>genres.includes(id));
 }
 export function pickSubscriptionOffers(offers,services=[]){return (offers?.flatrate||[]).filter(p=>!services.length||services.some(id=>serviceDefinitions.find(s=>s.id===id)?.match(p.provider_name)));}
+
+export const browseGenres=[{id:'all',label:'All genres'},{id:'action',label:'Action & Adventure'},{id:'animation',label:'Animation'},{id:'comedy',label:'Comedy'},{id:'crime',label:'Crime'},{id:'doc',label:'Documentaries'},{id:'drama',label:'Drama'},{id:'family',label:'Kids & Family'},{id:'horror',label:'Horror'},{id:'romance',label:'Romance'},{id:'scifi',label:'Sci-Fi & Fantasy'},{id:'thriller',label:'Thriller'},{id:'mystery',label:'Mystery'},{id:'western',label:'Westerns'}];
+export function browseGenreFilter(genre,type){
+ const movie={action:'28|12',animation:'16',comedy:'35',crime:'80',doc:'99',drama:'18',family:'10751',horror:'27',romance:'10749',scifi:'878|14',thriller:'53',mystery:'9648',western:'37'};
+ const keywords={horror:'315058',romance:'9840',thriller:'316362'};
+ if(type==='tv'&&keywords[genre])return {keyword:keywords[genre]};
+ return {genres:type==='tv'?({action:'10759',scifi:'10765'}[genre]||movie[genre]):movie[genre]};
+}
+export function matchesBrowseGenre(item,genre){const f=browseGenreFilter(genre,item.type);if(f.keyword)return (item.keywords?.keywords||item.keywords?.results||[]).some(k=>String(k.id)===f.keyword);return !f.genres||f.genres.split('|').some(id=>(item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(id)));}
+// Temporary, reviewed US availability corrections while provider indexing catches up.
+// Source: official Prime title page, verified 2026-10-08. Never infer US offers from a network alone.
+export const verifiedUSOffers=[{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
+export function activeVerifiedOffers(now=today()){return verifiedUSOffers.filter(x=>x.start<=now&&now<=x.reviewUntil);}
+export function withVerifiedUSOffers(item,offers={},now=today()){
+ const verified=activeVerifiedOffers(now).filter(x=>keyOf(x)===keyOf(item));
+ return {...offers,flatrate:[...(offers.flatrate||[]),...verified.filter(x=>!(offers.flatrate||[]).some(p=>p.provider_id===x.provider_id))]};
+}

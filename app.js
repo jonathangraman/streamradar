@@ -1,8 +1,8 @@
-import {unseenTitles,pickMoodGenres,pickMoods,matchesPickControls,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,pickMoodGenres,pickMoods,matchesPickControls,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,legacyTheater,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
-let library=emptyLibrary(),type='movie',service='all',kind='all',when='now',network='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
+let library=emptyLibrary(),type='movie',service='all',kind='all',genre='all',when='now',network='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
 const region='US';
 const preferences=readJSON('sr_preferences_v1',{});
 let hideWatched=preferences.hideWatched!==false;
@@ -77,6 +77,7 @@ function renderServices(){
   $('home-tabs').hidden=true;
   $('kind').querySelector('[value="tv"]').disabled=service==='theaters';
   $('kind').value=kind;
+  $('genre').value=genre;
   $('when').options[0].textContent=service==='theaters'?'Now in theaters':'Watch now';
   $('svcs').innerHTML=serviceDefinitions.map(s=>`<button class="svc ${service===s.id?'on':''}" data-action="service" data-service="${s.id}" aria-pressed="${service===s.id}"${service===s.id?' style="background:#fff;color:#000"':''}>${esc(s.label)}</button>`).join('');
   const selected=$('svcs').querySelector('.on');if(selected)$('svcs').parentElement.scrollLeft=Math.max(0,selected.offsetLeft-20);
@@ -85,7 +86,7 @@ function renderServices(){
 function posterTags(item){return tags(item,'poster')+(when==='soon'&&item.upcomingSeason>1?`<span class="content-tag tag-season">SEASON ${Number(item.upcomingSeason)} SOON</span>`:'');}
 function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${posterTags(item)}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${when==='soon'&&item.upcomingDate?'Expected':item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate((when==='soon'&&item.upcomingDate)||item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
 async function loadCatalog(more=false){
-  const request=sequence.next(),wanted={type,service,region,kind,when,network,page:more?page+1:1};loading=true;
+  const request=sequence.next(),wanted={type,service,region,kind,genre,when,network,page:more?page+1:1};loading=true;
   searchController?.abort();if(!more){page=1;results=[];$('grid').innerHTML='<div class="loading" role="status">Loading titles…</div>';}
   $('load-more').hidden=true;$('count-lbl').textContent='Loading…';
   try{
@@ -111,6 +112,11 @@ async function loadCatalog(more=false){
     if(!sequence.current(request))return;
     const data={total_pages:Math.max(...batches.map(d=>d.total_pages||1)),results:batches.flatMap(d=>d.results||[])};
     let incoming=[...new Map((data.results||[]).filter(Boolean).map(x=>[keyOf(x),x])).values()];
+    if(wanted.when==='now'&&wanted.page===1){
+      const corrections=activeVerifiedOffers().filter(x=>types.includes(x.type)&&(wanted.service==='all'||x.service===wanted.service)&&!incoming.some(i=>keyOf(i)===keyOf(x)));
+      for(const entry of corrections){const item=normalize(await api('/'+entry.type+'/'+entry.id+'?append_to_response=credits,keywords'),entry.type);if(item&&isEnglish(item)&&matchesBrowseGenre(item,wanted.genre)&&(wanted.kind!=='doc'||contentLabels(item).some(l=>l.kind==='doc'))&&(wanted.kind!=='standup'||contentLabels(item).some(l=>l.kind==='standup')))incoming.push(item);}
+      if(!sequence.current(request))return;
+    }
     if(wanted.service==='theaters'){
       incoming=await mapLimit(incoming,4,async item=>{
         try{
@@ -144,6 +150,8 @@ async function loadCatalog(more=false){
     }
     if(wanted.kind==='standup')incoming=incoming.map(x=>({...x,keywords:{keywords:[{id:9716,name:'stand-up comedy'}]}}));
     if(wanted.kind==='movie')incoming=incoming.filter(isNarrativeMovie);
+    if(wanted.kind==='doc')incoming=incoming.filter(item=>contentLabels(item).some(l=>l.kind==='doc'));
+    if(wanted.genre!=='all')incoming=incoming.filter(item=>matchesBrowseGenre(item,wanted.genre));
     page=wanted.page;totalPages=Math.min(data.total_pages||1,500);results=[...new Map([...results,...incoming].map(x=>[keyOf(x),x])).values()];
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
@@ -181,7 +189,7 @@ async function search(q){
     $('count-lbl').textContent=`${found.length} English matches · ${region}`;
     $('grid').innerHTML=found.map(item=>{remember(item);return `<button class="search-result" data-action="detail" data-key="${keyOf(item)}">${poster(item)}<span class="info"><strong>${esc(item.title)}</strong><span class="data-note">${esc(item.date.slice(0,4)||'Year unknown')} · ${item.type==='tv'?'Series':'Movie'}</span><span class="card-tags">${tags(item)}</span><p id="offers-${keyOf(item).replace(':','-')}">Checking offers…</p></span></button>`;}).join('')||'<div class="empty">No matching titles. Try another title or spelling.</div>';
     await mapLimit(found,4,async item=>{
-      let text;try{const d=await api(`/${item.type}/${item.id}/watch/providers`,{signal}),offer=d.results?.[region];
+      let text;try{const d=await api(`/${item.type}/${item.id}/watch/providers`,{signal}),offer=withVerifiedUSOffers(item,d.results?.[region]||{});
         const subscriptions=(offer?.flatrate||[]).map(p=>p.provider_name);const free=[...(offer?.free||[]),...(offer?.ads||[])].map(p=>p.provider_name);
         text=subscriptions.length?'Subscription: '+subscriptions.join(', '):free.length?'Free / with ads: '+[...new Set(free)].join(', '):offer?.rent?.length||offer?.buy?.length?'Rental / purchase offers available':'No US offers listed';
       }catch{text='Availability could not be checked';}
@@ -222,9 +230,10 @@ async function loadDetail(key){
   }}
 }
 async function loadOffers(item,request){
-  try{const d=await api(`/${item.type}/${item.id}/watch/providers`);if(!detailSequence.current(request))return;const offers=d.results?.[region]||{};
+  try{const d=await api(`/${item.type}/${item.id}/watch/providers`);if(!detailSequence.current(request))return;const offers=withVerifiedUSOffers(item,d.results?.[region]||{});
     const groups=[['flatrate','Included with subscription'],['free','Free'],['ads','Free with ads'],['rent','Rent'],['buy','Buy']];
     $('detail-offers').innerHTML=groups.filter(([key])=>offers[key]?.length).map(([key,label])=>`<section class="offer-group"><h3>${label}</h3><div class="provs">${offers[key].map(p=>`<span class="ptag">${esc(p.provider_name)}</span>`).join('')}</div></section>`).join('')||'<p class="data-note">No US streaming offers listed.</p>';
+    for(const offer of activeVerifiedOffers().filter(x=>keyOf(x)===keyOf(item))){if(offer.url)$('detail-offers').insertAdjacentHTML('beforeend',`<a class="provider-link" href="${esc(offer.url)}" target="_blank" rel="noopener noreferrer">Watch on ${esc(offer.provider_name)} ↗</a>`);}
     if(offers.link){const u=new URL(offers.link);if(u.protocol==='https:'&&u.hostname==='www.themoviedb.org')$('detail-offers').insertAdjacentHTML('beforeend',`<a class="provider-link" href="${esc(u.href)}" target="_blank" rel="noopener noreferrer">Open watch options ↗</a>`);}
 
   }catch(e){if(detailSequence.current(request))$('detail-offers').innerHTML='<p class="data-note error-text">Availability could not be checked. Please retry.</p><button class="text-button" data-action="retry-offers">Retry availability</button>';}
@@ -291,7 +300,7 @@ async function recommend(){
       const full={...item,...normalize(detail,item.type)};
       if(!matchesPickControls(full,chosenControls))return null;
       const data=await api('/'+item.type+'/'+item.id+'/watch/providers');
-      const offers=pickSubscriptionOffers(data.results?.US,chosenServices);if(!offers.length)return null;
+      const offers=pickSubscriptionOffers(withVerifiedUSOffers(item,data.results?.US||{}),chosenServices);if(!offers.length)return null;
       return {...full,reason:item.reason+' Included with '+[...new Set(offers.map(p=>p.provider_name))].join(', ')+'.'};
     });
     if(checked.length&&checked.every(x=>x?._error))throw new Error('Could not check streaming availability. Please retry.');
@@ -331,7 +340,9 @@ $('home-search-input').addEventListener('keydown',e=>{if(e.key==='Escape'){clear
 
 $('when').addEventListener('change',()=>{when=$('when').value;network='all';if(when==='soon'&&service!=='theaters'&&['movie','tv'].includes(kind))kind='all';renderServices();loadCatalog();});
 $('network').addEventListener('change',()=>{network=$('network').value;if(network!=='all'){type='tv';kind='tv';}renderServices();loadCatalog();});
-$('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
+$('genre').innerHTML=browseGenres.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
+$('genre').addEventListener('change',()=>{genre=$('genre').value;if(genre==='doc'&&kind==='movie')kind='doc';renderServices();loadCatalog();});
+$('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&genre==='doc')genre='all';if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
   try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
 });
