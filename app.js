@@ -8,7 +8,8 @@ let theaterZip=normalizeZip(readJSON('sr_theater_zip',''));
 const preferences=readJSON('sr_preferences_v1',{});
 let hideWatched=preferences.hideWatched!==false;
 let scope=preferences.catalogScope==='catalog'?'catalog':'originals',reality=['exclude','include','only'].includes(preferences.reality)?preferences.reality:'exclude';
-genre=reality==='only'?'reality':reality==='include'?'include-reality':'all';
+genre=reality==='only'?'reality':'all';
+reality=genre==='reality'?'only':'include';
 let pickMedia=['all','movie','tv'].includes(preferences.media)?preferences.media:'all',pickGenre=pickGenres.some(g=>g.id===preferences.genre)?preferences.genre:'all';
 const pickYears=Array.from({length:new Date().getFullYear()-1899},(_,i)=>String(new Date().getFullYear()-i));
 let pickYear=pickYears.includes(String(preferences.year))?String(preferences.year):'all',similarSeed=null;
@@ -393,7 +394,7 @@ $('catalog-scope').addEventListener('change',()=>{scope=$('catalog-scope').value
 $('when').addEventListener('change',()=>{when=$('when').value;network='all';renderServices();loadCatalog();});
 $('network').addEventListener('change',()=>{network=$('network').value;if(network!=='all'){type='tv';kind='tv';}renderServices();loadCatalog();});
 $('genre').innerHTML=browseGenres.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
-$('genre').addEventListener('change',()=>{genre=$('genre').value;reality=genre==='reality'?'only':genre==='include-reality'?'include':'exclude';if(genre==='doc'&&kind==='movie')kind='doc';try{persistPreferences();}catch{toast('Could not save genre preference.');}renderServices();loadCatalog();});
+$('genre').addEventListener('change',()=>{genre=$('genre').value;reality=genre==='reality'?'only':genre==='all'?'include':'exclude';if(genre==='doc'&&kind==='movie')kind='doc';try{persistPreferences();}catch{toast('Could not save genre preference.');}renderServices();loadCatalog();});
 $('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&genre==='doc')genre='all';if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
   try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
