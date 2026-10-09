@@ -236,7 +236,7 @@ export function providerIds(catalog, service) {
 export function unseenTitles(titles,library,hide=true){const seen=new Set((library.seen||[]).map(keyOf));return hide?titles.filter(x=>!seen.has(keyOf(x))):titles;}
 export function pickSubscriptionOffers(offers,services=[]){return (offers?.flatrate||[]).filter(p=>!services.length||services.some(id=>serviceDefinitions.find(s=>s.id===id)?.match(p.provider_name)));}
 
-export const browseGenres=[{id:'all',label:'All genres'},{id:'action',label:'Action & Adventure'},{id:'animation',label:'Animation'},{id:'comedy',label:'Comedy'},{id:'crime',label:'Crime'},{id:'doc',label:'Documentaries'},{id:'drama',label:'Drama'},{id:'family',label:'Kids & Family'},{id:'horror',label:'Horror'},{id:'romance',label:'Romance'},{id:'scifi',label:'Sci-Fi & Fantasy'},{id:'thriller',label:'Thriller'},{id:'mystery',label:'Mystery'},{id:'western',label:'Westerns'}];
+export const browseGenres=[{id:'all',label:'All genres'},{id:'include-reality',label:'All + reality & talk'},{id:'reality',label:'Reality & talk'},{id:'action',label:'Action & Adventure'},{id:'animation',label:'Animation'},{id:'comedy',label:'Comedy'},{id:'crime',label:'Crime'},{id:'doc',label:'Documentaries'},{id:'drama',label:'Drama'},{id:'family',label:'Kids & Family'},{id:'horror',label:'Horror'},{id:'romance',label:'Romance'},{id:'scifi',label:'Sci-Fi & Fantasy'},{id:'thriller',label:'Thriller'},{id:'mystery',label:'Mystery'},{id:'western',label:'Westerns'}];
 export function browseGenreFilter(genre,type){
  const movie={action:'28|12',animation:'16',comedy:'35',crime:'80',doc:'99',drama:'18',family:'10751',horror:'27',romance:'10749',scifi:'878|14',thriller:'53',mystery:'9648',western:'37'};
  const keywords={horror:'315058',romance:'9840',thriller:'316362'};
