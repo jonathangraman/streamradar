@@ -59,13 +59,13 @@ test('network filters require both HBO availability and the requested original n
  const q=catalogQuery({type:'tv',service:'max',network:'food',ids:[1899]},'2026-09-28');
  assert.equal(q.get('with_networks'),'143');assert.equal(q.get('watch_region'),'US');assert.equal(q.get('with_watch_providers'),'1899');assert.equal(q.get('with_watch_monetization_types'),'flatrate');
  assert.equal(catalogQuery({type:'tv',service:'max',network:'discovery',ids:[1899]}).get('with_networks'),'64');
- assert.equal(catalogQuery({type:'tv',service:'netflix',network:'food',ids:[8]}).has('with_networks'),false);
+ assert.equal(catalogQuery({type:'tv',service:'netflix',network:'food',ids:[8]}).get('with_networks'),'213');
 });
 test('upcoming Apple originals include movie and series metadata without requiring current availability',()=>{
  const film=catalogQuery({service:'apple',type:'movie',when:'soon',ids:[350]},'2026-09-28');
  const tv=catalogQuery({service:'apple',type:'tv',when:'soon',ids:[350]},'2026-09-28');
  assert.equal(film.get('with_companies'),'194232');assert.equal(tv.get('with_networks'),'2552');assert.equal(tv.has('with_watch_providers'),false);assert.equal(film.get('primary_release_date.gte'),'2026-09-29');
- assert.equal(catalogQuery({service:'starz',type:'movie',when:'soon',ids:[43]}).get('with_watch_providers'),'43');
+ assert.equal(catalogQuery({service:'starz',type:'movie',when:'soon',ids:[43],scope:'catalog'}).get('with_watch_providers'),'43');
  assert.equal(shiftedDate('2026-12-31',1),'2027-01-01');
 });
 test('new episode pills exclude future, stale, special and missing episodes',()=>{
@@ -134,7 +134,7 @@ test('original series filter keeps service networks and excludes broadcast catal
  assert(!isOriginalSeries({networks:[{id:3353},{id:6}]},'peacock'));
  assert(!isOriginalSeries({networks:[{id:4330},{id:16}]},'paramount'));
  assert(isOriginalSeries({networks:[{id:67}]},'paramount')); // Keep requested Showtime originals
- assert(!catalogQuery({service:'all',type:'tv'}).has('with_networks'));
+ assert(!catalogQuery({service:'all',type:'tv',scope:'catalog'}).has('with_networks'));
 });
 test('movie originals require first-release evidence, never provider availability alone',()=>{
  const release=(type,date,note='')=>({type,release_date:date+'T00:00:00.000Z',note});
@@ -256,4 +256,36 @@ test('Netflix upcoming movies do not require an existing offer; Animals uses its
  assert.equal(withVerifiedUSOffers({type:'movie',id:1236045},{},'2026-10-09').flatrate[0].provider_name,'Netflix');
  assert(hasOfficialNetflixHomepage({homepage:'https://www.netflix.com/title/81757047'}));
  for(const homepage of ['https://netflix.com.evil.test/title/81757047','https://www.netflix.com/','invalid'])assert(!hasOfficialNetflixHomepage({homepage}));
+});
+
+import {matchesOriginalMovie,matchesOriginalSeries,matchesReality,isRealityTV,originalServices} from '../core.js';
+test('every streaming service defaults to originals and permits opting into the full catalog',()=>{
+ for(const service of originalsOnlyServices){
+  const q=catalogQuery({service,type:'tv',ids:[9]});
+  assert.equal(q.get('with_networks'),originalNetworks[service]);
+  assert.equal(q.get('without_genres'),'10764,10767');
+  assert(!catalogQuery({service,type:'tv',ids:[9],scope:'catalog'}).has('with_networks'));
+  const movie=catalogQuery({service,type:'movie',when:'soon',ids:[9]});assert(!movie.has('with_watch_providers'));
+ }
+ assert(catalogQuery({service:'all',type:'tv'}).get('with_networks').includes('213'));
+ assert.equal(originalServices('all').length,9);
+ assert(!matchesOriginalSeries({type:'tv',networks:[{id:12}]},'prime'));
+ assert(!matchesOriginalSeries({type:'tv',networks:[{id:1024}],first_air_date:'1996-09-16'},'prime'));
+ assert(matchesOriginalSeries({type:'tv',networks:[{id:453}],first_air_date:'2022-04-14'},'disney'));
+});
+test('reality and talk are hidden by default while originals can be browsed separately',()=>{
+ const reality={type:'tv',genre_ids:[10764],networks:[{id:453}]},talk={type:'tv',genres:[{id:10767}]};
+ for(const item of [reality,talk]){assert(isRealityTV(item));assert(!matchesReality(item));assert(matchesReality(item,'include'));assert(matchesReality(item,'only'));}
+ for(const item of [{type:'tv',genre_ids:[99]},{type:'tv',genre_ids:[18]},{type:'movie',genre_ids:[35]}]){assert(matchesReality(item));assert(!matchesReality(item,'only'));}
+ assert(matchesOriginalSeries(reality,'disney'));
+ assert.equal(catalogQuery({type:'tv',reality:'only'}).get('with_genres'),'10764|10767');
+ assert(!catalogQuery({type:'tv',reality:'include'}).has('without_genres'));
+});
+test('original movie evidence applies across all services and rejects licensed theatrical films',()=>{
+ const make=(note,homepage='')=>({type:'movie',date:'2026-10-09',homepage,release_dates:{results:[{iso_3166_1:'US',release_dates:[{type:4,release_date:'2026-10-09T00:00:00Z',note}]}]}});
+ for(const [service,note] of [['netflix','Netflix'],['prime','Prime Video'],['disney','Hulu'],['peacock','Peacock'],['paramount','Paramount Plus'],['apple','Apple TV+'],['max','HBO Max'],['starz','Starz'],['mgm','MGM Plus']]){assert(matchesOriginalMovie(make(note),service));assert(matchesOriginalMovie(make(note),'all'));}
+ const licensed=make('Netflix');licensed.release_dates.results[0].release_dates.push({type:3,release_date:'2026-01-01T00:00:00Z'});assert(!matchesOriginalMovie(licensed,'netflix'));
+ assert(!matchesOriginalMovie(make(''),'peacock'));
+ assert(matchesOriginalMovie(make('','https://www.netflix.com/title/81757047'),'netflix','soon','2026-10-08'));
+ assert(!matchesOriginalMovie(make('','https://netflix.com.evil.test/title/81757047'),'netflix','soon','2026-10-08'));
 });
