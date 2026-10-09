@@ -83,7 +83,7 @@ test('content badges cover both API genre formats and only recently premiered re
  assert.equal(contentLabels({genre_ids:[99]}).some(x=>x.kind==='doc'),true);
  const seasons=[{season_number:0,air_date:'2026-09-27'},{season_number:1,air_date:'2026-09-27'},{season_number:2,air_date:'2026-06-01'},{season_number:3,air_date:'2026-10-01'}];
  assert.equal(contentLabels({seasons},'2026-09-28').length,0);
- assert.equal(contentLabels({seasons:[...seasons,{season_number:4,air_date:'2026-09-01'}]},'2026-09-28')[0].text,'NEW SEASON');
+ assert.equal(contentLabels({seasons:[...seasons,{season_number:4,air_date:'2026-09-01'}]},'2026-09-28')[0].text,'SEASON PREMIERE');
 });
 test('MGM+, Starz and Showtime use direct subscriptions without channel add-ons',()=>{
  const catalog=['MGM Plus','Starz','Showtime','MGM+ Amazon Channel','Starz Apple TV channel'].map((provider_name,provider_id)=>({provider_id,provider_name}));
@@ -201,7 +201,7 @@ test('browse genre filters map movie genres and TV keywords across current and f
 });
 test('verified US corrections are title-specific, dated and do not duplicate upstream offers',()=>{
  const item={type:'tv',id:288673},now='2026-10-08';
- assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-08').length,0);
+ assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-09').length,0);
  assert.equal(withVerifiedUSOffers(item,{},now).flatrate[0].provider_name,'Amazon Prime Video');
  assert.equal(withVerifiedUSOffers({type:'movie',id:288673},{},now).flatrate.length,0);
  assert.equal(withVerifiedUSOffers(item,{flatrate:[{provider_id:9,provider_name:'Amazon Prime Video'}]},now).flatrate.length,1);
@@ -227,4 +227,33 @@ test('theater ZIP links preserve leading zeros and reject malformed input',()=>{
  assert.equal(normalizeZip(' 02108 '),'02108');assert.equal(theaterURL('02108'),'https://www.fandango.com/02108_movietimes');
  assert.equal(theaterURL('90210'),'https://www.fandango.com/90210_movietimes');
  for(const zip of ['',null,2108,'00000','1234','123456','ABCDE','75025/evil','<script>'])assert.equal(theaterURL(zip),'');
+});
+
+
+test('Netflix catalog series cannot inherit broadcast season badges or activity ranking',()=>{
+ const item={id:549,type:'tv',date:'1990-09-13',catalogService:'netflix',networks:[{id:6}],seasons:[{season_number:26,air_date:'2026-10-01'}],last_episode_to_air:{season_number:26,episode_number:2,air_date:'2026-10-08'}};
+ assert.deepEqual(contentLabels(item,'2026-10-09'),[]);
+ assert.equal(activityDate(item,'2026-10-09'),'1990-09-13');
+ const original={...item,networks:[{id:213}]};
+ assert.equal(activityDate(original,'2026-10-09'),'2026-10-08');
+ assert.equal(contentLabels(original,'2026-10-09')[0].text,'SEASON PREMIERE');
+});
+test('Below has a temporary Netflix correction with a confirmed US release date',()=>{
+ const item={type:'tv',id:285322};
+ assert.equal(withVerifiedUSOffers(item,{},'2026-10-07').flatrate.length,0);
+ assert.equal(withVerifiedUSOffers(item,{},'2026-10-08').flatrate[0].provider_name,'Netflix');
+ assert.equal(withVerifiedUSOffers(item,{},'2026-11-09').flatrate.length,0);
+ assert.equal(catalogQuery({service:'netflix',type:'tv',when:'soon'},'2026-10-08').get('with_networks'),'213');
+});
+
+import {scheduledVerifiedReleases,hasOfficialNetflixHomepage} from '../core.js';
+test('Netflix upcoming movies do not require an existing offer; Animals uses its confirmed Netflix date',()=>{
+ const q=catalogQuery({service:'netflix',type:'movie',when:'soon',ids:[8]},'2026-10-08');
+ assert(!q.has('with_watch_providers'));assert.equal(q.get('primary_release_date.gte'),'2026-10-09');
+ assert.equal(scheduledVerifiedReleases('2026-10-08').find(x=>x.id===1236045).start,'2026-10-09');
+ assert(!scheduledVerifiedReleases('2026-10-09').some(x=>x.id===1236045));
+ assert.equal(withVerifiedUSOffers({type:'movie',id:1236045},{},'2026-10-08').flatrate.length,0);
+ assert.equal(withVerifiedUSOffers({type:'movie',id:1236045},{},'2026-10-09').flatrate[0].provider_name,'Netflix');
+ assert(hasOfficialNetflixHomepage({homepage:'https://www.netflix.com/title/81757047'}));
+ for(const homepage of ['https://netflix.com.evil.test/title/81757047','https://www.netflix.com/','invalid'])assert(!hasOfficialNetflixHomepage({homepage}));
 });
