@@ -26,9 +26,11 @@ export function contentLabels(item, now=today()) {
   const labels=[];
   if(isStandup(item))labels.push({kind:'standup',text:'STAND-UP'});
   if((item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(99))labels.push({kind:'doc',text:'DOC'});
+  // Series-level offers cannot establish which seasons or episodes a service carries.
+  if(item.catalogService && item.catalogService!=='all' && !isOriginalSeries(item,item.catalogService))return labels;
   const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-90);
   const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=cutoff.toISOString().slice(0,10)).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
-  if(season)labels.push({kind:'season',text:'NEW SEASON',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
+  if(season)labels.push({kind:'season',text:'SEASON PREMIERE',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
   const episode=item.last_episode_to_air, week=new Date(now+'T12:00:00Z');week.setUTCDate(week.getUTCDate()-7);
   const weekday=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).toUpperCase()+' '+Number(date.slice(5,7))+'/'+Number(date.slice(8,10));
   const next=item.next_episode_to_air;
@@ -38,7 +40,7 @@ export function contentLabels(item, now=today()) {
 }
 export function activityDate(item,now=today()){
   const dates=[item.date];
-  if(item.type==='tv')dates.push(item.last_episode_to_air?.season_number>0?item.last_episode_to_air.air_date:null,...(item.seasons||[]).filter(s=>s.season_number>0).map(s=>s.air_date));
+  if(item.type==='tv'&&(!item.catalogService||item.catalogService==='all'||isOriginalSeries(item,item.catalogService)))dates.push(item.last_episode_to_air?.season_number>0?item.last_episode_to_air.air_date:null,...(item.seasons||[]).filter(s=>s.season_number>0).map(s=>s.air_date));
   return dates.filter(d=>d&&d<=now).sort().at(-1)||item.date||'';
 }
 export function recentActivityFirst(a,b){return activityDate(b).localeCompare(activityDate(a))||newestFirst(a,b);}
@@ -90,6 +92,7 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
     // Original-production affiliations are not promised streaming arrival dates.
     if(service!=='all'){
       if(type==='tv'&&originalNetworks[service])params.set('with_networks',originalNetworks[service]);
+      else if(type==='movie'&&service==='netflix')params.set('sort_by','popularity.desc');
       else if(type==='movie'&&service==='apple')params.set('with_companies','194232');
       else {params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types','flatrate');}
     }
@@ -208,8 +211,8 @@ export function browseGenreFilter(genre,type){
 }
 export function matchesBrowseGenre(item,genre){const f=browseGenreFilter(genre,item.type);if(f.keyword)return (item.keywords?.keywords||item.keywords?.results||[]).some(k=>String(k.id)===f.keyword);return !f.genres||f.genres.split('|').some(id=>(item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(id)));}
 // Temporary, reviewed US availability corrections while provider indexing catches up.
-// Source: official Prime title page, verified 2026-10-08. Never infer US offers from a network alone.
-export const verifiedUSOffers=[{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
+// Sources: official Prime title page and Netflix Tudum/title page, verified 2026-10-09. Never infer US offers from a network alone.
+export const verifiedUSOffers=[{id:1236045,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-09',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81757047',source:'https://media.netflix.com/en/only-on-netflix/81757047'},{id:285322,type:'tv',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-08',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81652677',source:'https://www.netflix.com/tudum/below'},{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
 export function activeVerifiedOffers(now=today()){return verifiedUSOffers.filter(x=>x.start<=now&&now<=x.reviewUntil);}
 export function withVerifiedUSOffers(item,offers={},now=today()){
  const verified=activeVerifiedOffers(now).filter(x=>keyOf(x)===keyOf(item));
@@ -230,4 +233,9 @@ export function rankRecommendations(candidates,seeds=[],prior=new Set()){
  }
  const score=item=>item.affinity*10+(item.affinity?Math.max(0,...seeds.filter(s=>s.type===item.type).map(s=>genres(s).filter(g=>genres(item).includes(g)).length)):0);
  return [...grouped.values()].sort((a,b)=>score(b)-score(a)||Number(prior.has(keyOf(a)))-Number(prior.has(keyOf(b)))||(b.vote_average||0)-(a.vote_average||0));
+}
+
+export function scheduledVerifiedReleases(now=today()){return verifiedUSOffers.filter(x=>x.start>now&&x.start<=shiftedDate(now,90)&&now<=x.reviewUntil);}
+export function hasOfficialNetflixHomepage(item){
+ try{const u=new URL(item.homepage);return u.protocol==='https:'&& /^(?:www\.)?netflix\.com$/.test(u.hostname)&&/^\/title\/\d+/.test(u.pathname);}catch{return false;}
 }

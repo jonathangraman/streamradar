@@ -1,4 +1,4 @@
-import {browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {scheduledVerifiedReleases,hasOfficialNetflixHomepage,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,originalsOnlyServices,originalMovieServices,isOriginalSeries,isOriginalMovie,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -93,7 +93,7 @@ async function loadCatalog(more=false){
   $('load-more').hidden=true;$('count-lbl').textContent='Loading…';
   try{
     const types=wanted.service==='theaters'?['movie']:wanted.service==='max'&&wanted.network!=='all'?['tv']:wanted.kind==='movie'?['movie']:wanted.kind==='tv'?['tv']:['movie','tv'];
-    const batches=await Promise.all(types.map(async media=>{
+    const settled=await Promise.allSettled(types.map(async media=>{
       const providerData=await api(`/watch/providers/${media}?watch_region=US`);
       const ids=providerIds(providerData.results||[],wanted.service);
       if(wanted.service!=='theaters'&&!ids.length)throw new Error('This service is not currently listed in the US provider catalog.');
@@ -112,11 +112,14 @@ async function loadCatalog(more=false){
       return {...data,results:(data.results||[]).filter(isEnglish).map(x=>normalize(x,media))};
     }));
     if(!sequence.current(request))return;
+    const batches=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
+    let incomplete=settled.some(x=>x.status==='rejected');
+    if(!batches.length)throw settled.find(x=>x.status==='rejected').reason;
     const data={total_pages:Math.max(...batches.map(d=>d.total_pages||1)),results:batches.flatMap(d=>d.results||[])};
     let incoming=[...new Map((data.results||[]).filter(Boolean).map(x=>[keyOf(x),x])).values()];
-    if(wanted.when==='now'&&wanted.page===1){
-      const corrections=activeVerifiedOffers().filter(x=>types.includes(x.type)&&(wanted.service==='all'||x.service===wanted.service)&&!incoming.some(i=>keyOf(i)===keyOf(x)));
-      for(const entry of corrections){const item=normalize(await api('/'+entry.type+'/'+entry.id+'?append_to_response=credits,keywords'),entry.type);if(item&&isEnglish(item)&&matchesBrowseGenre(item,wanted.genre)&&(wanted.kind!=='doc'||contentLabels(item).some(l=>l.kind==='doc'))&&(wanted.kind!=='standup'||contentLabels(item).some(l=>l.kind==='standup')))incoming.push(item);}
+    if(wanted.page===1){
+      const corrections=(wanted.when==='now'?activeVerifiedOffers():scheduledVerifiedReleases()).filter(x=>types.includes(x.type)&&(wanted.service==='all'||x.service===wanted.service)&&!incoming.some(i=>keyOf(i)===keyOf(x)));
+      for(const entry of corrections){const item=normalize(await api('/'+entry.type+'/'+entry.id+'?append_to_response=credits,keywords'),entry.type);if(item&&isEnglish(item)&&matchesBrowseGenre(item,wanted.genre)&&(wanted.kind!=='doc'||contentLabels(item).some(l=>l.kind==='doc'))&&(wanted.kind!=='standup'||contentLabels(item).some(l=>l.kind==='standup')))incoming.push({...item,...(wanted.when==='soon'?{upcomingDate:entry.start}:{})});}
       if(!sequence.current(request))return;
     }
     if(wanted.service==='theaters'){
@@ -129,15 +132,18 @@ async function loadCatalog(more=false){
       });
       if(!sequence.current(request))return;
     }
-    if(originalsOnlyServices.includes(wanted.service)||wanted.kind==='movie'||types.includes('tv')){
+    if(originalsOnlyServices.includes(wanted.service)||wanted.kind==='movie'||types.includes('tv')||(wanted.service==='netflix'&&wanted.when==='soon')){
       $('count-lbl').textContent=wanted.kind==='movie'?'Checking movie categories…':'Checking latest season and episode dates…';
       incoming=await mapLimit(incoming,4,async item=>{
-        if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'&&!originalMovieServices.includes(wanted.service)))return item;
+        if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'&&!originalMovieServices.includes(wanted.service)&&!(wanted.service==='netflix'&&wanted.when==='soon')))return item;
         try{return {...item,...normalize(await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`),item.type)};}catch{if(wanted.when==='soon')throw new Error('Could not check upcoming dates. Please retry.');if(originalsOnlyServices.includes(wanted.service))throw new Error('Could not verify originals. Please retry.');return item;}
       });
       if(!sequence.current(request))return;
     }
-    if(incoming.some(item=>item?._error))throw new Error(incoming.find(item=>item?._error)._error);
+    if(incoming.some(item=>item?._error)){
+      incomplete=true;incoming=incoming.filter(item=>!item?._error);
+      if(!incoming.length)throw new Error('Could not verify title dates. Please retry.');
+    }
     if(originalsOnlyServices.includes(wanted.service)){
       incoming=await mapLimit(incoming,4,async item=>{
         if(item.type==='tv')return isOriginalSeries(item,wanted.service)?item:null;
@@ -148,17 +154,20 @@ async function loadCatalog(more=false){
       incoming=incoming.filter(Boolean);
     }
     if(wanted.when==='soon'){
+      if(wanted.service==='netflix')incoming=incoming.filter(item=>item.type==='tv'||hasOfficialNetflixHomepage(item));
       incoming=incoming.map(item=>{if(item.type!=='tv')return item;const premiere=upcomingPremiere(item);return premiere?{...item,upcomingDate:premiere.date,upcomingSeason:premiere.season}:null;}).filter(Boolean);
     }
     if(wanted.kind==='standup')incoming=incoming.map(x=>({...x,keywords:{keywords:[{id:9716,name:'stand-up comedy'}]}}));
     if(wanted.kind==='movie')incoming=incoming.filter(isNarrativeMovie);
     if(wanted.kind==='doc')incoming=incoming.filter(item=>contentLabels(item).some(l=>l.kind==='doc'));
     if(wanted.genre!=='all')incoming=incoming.filter(item=>matchesBrowseGenre(item,wanted.genre));
+    incoming=incoming.map(item=>({...item,catalogService:wanted.service}));
     page=wanted.page;totalPages=Math.min(data.total_pages||1,500);results=[...new Map([...results,...incoming].map(x=>[keyOf(x),x])).values()];
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
     $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No dated premieres match these filters. Upcoming dates may not be announced or listed yet.</div>';
     $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalsOnlyServices.includes(wanted.service)?(originalMovieServices.includes(wanted.service)?'Originals only · ':'Original series only · '):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    if(incomplete)$('count-lbl').textContent+=' · Some results unavailable; retry to check all categories';
     $('load-more').hidden=page>=totalPages;
     enrichLabels(results,request);
   }catch(e){if(sequence.current(request)){$('grid').innerHTML=errorHTML(e.message,'retry-catalog');$('count-lbl').textContent='Catalog unavailable';}}
