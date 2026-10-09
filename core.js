@@ -49,9 +49,36 @@ export function theaterURL(value){const zip=normalizeZip(value);return zip?'http
 export const networkIds={food:'143',discovery:'64'};
 export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67',max:'49|3186',starz:'318',mgm:'6219|922'};
 // Network affiliations identify series; movie premieres need separate release evidence.
-export const originalsOnlyServices=['prime','disney','paramount','peacock'];
-export const originalMovieServices=['prime','disney'];
+export const originalsOnlyServices=Object.keys(originalNetworks);
+export const originalMovieServices=originalsOnlyServices;
+export function originalServices(service){return service==='all'?originalsOnlyServices:[service];}
+export function matchesOriginalSeries(item,service){return originalServices(service).some(id=>isOriginalSeries(item,id));}
+const movieOriginalEvidence={
+ netflix:{host:/^(?:www\.)?netflix\.com$/,name:/\bnetflix\b/i},
+ prime:{host:/^(?:www\.)?(?:amazon\.com|primevideo\.com)$/,name:/\b(?:amazon|prime video)\b/i},
+ disney:{host:/^(?:www\.)?(?:disneyplus\.com|hulu\.com)$/,name:/\b(?:hulu|disney\s*(?:\+|plus))/i},
+ peacock:{host:/^(?:www\.)?peacocktv\.com$/,name:/\bpeacock\b/i},
+ paramount:{host:/^(?:www\.)?(?:paramountplus\.com|sho\.com)$/,name:/(?:\bparamount\s*(?:\+|plus)|\bshowtime\b)/i},
+ apple:{host:/^tv\.apple\.com$/,name:/\bapple tv(?:\s*(?:\+|plus))?/i},
+ max:{host:/^(?:www\.)?(?:max\.com|hbomax\.com)$/,name:/\b(?:hbo(?: max)?|max)\b/i},
+ starz:{host:/^(?:www\.)?starz\.com$/,name:/\bstarz\b/i},
+ mgm:{host:/^(?:www\.)?(?:mgmplus\.com|epix\.com)$/,name:/(?:\bmgm\s*(?:\+|plus)|\bepix\b)/i}
+};
+export function officialMovieService(item,service){
+ try{const u=new URL(item.homepage);return u.protocol==='https:'&&movieOriginalEvidence[service]?.host.test(u.hostname)&&u.pathname!=='/';}catch{return false;}
+}
+export function matchesOriginalMovie(item,service,when='now',now=today()){
+ return originalServices(service).some(id=>isOriginalMovie(item,id)||(when==='soon'&&(item.date||item.release_date)>now&&officialMovieService(item,id)));
+}
+export const realityGenres=[10764,10767];
+export function isRealityTV(item){return (item.type||item.media_type)==='tv'&&(item.genre_ids||item.genres?.map(g=>g.id)||[]).some(id=>realityGenres.includes(id));}
+export function matchesReality(item,filter='exclude'){return filter==='include'||(filter==='only'?isRealityTV(item):!isRealityTV(item));}
+export const catalogBatchTarget=36;
+export const catalogScanLimit=6;
 export function isOriginalSeries(item,service){
+  const first=item.first_air_date||item.date;
+  // Prime's network list can include subsequently acquired/syndicated shows.
+  if(service==='prime'&&first&&first<'2013-04-19')return false;
   const broadcast=service==='paramount'?16:service==='peacock'?6:null;
   const launch=service==='paramount'?'2014-10-28':'2020-07-15';
   // Network lists include later syndication. Reject pre-service broadcast premieres,
@@ -61,23 +88,22 @@ export function isOriginalSeries(item,service){
   return (item.networks||[]).some(n=>ids.includes(n.id));
 }
 export function isOriginalMovie(item,service){
-  if(!originalMovieServices.includes(service))return true;
+  if(!originalMovieServices.includes(service))return false;
   const releases=(item.release_dates?.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates||[];
   const dated=releases.filter(r=>/^\d{4}-\d{2}-\d{2}/.test(r.release_date||''));
   const digital=dated.filter(r=>r.type===4).sort((a,b)=>a.release_date.localeCompare(b.release_date));
   if(!digital.length)return false;
   const first=digital[0].release_date.slice(0,10);
   const debut=digital.filter(r=>r.release_date.slice(0,10)===first);
-  const name=service==='prime'?/\b(?:amazon|prime video)\b/i:/\b(?:hulu|disney\s*(?:\+|plus))/i;
-  let officialHomepage=false;
-  try{const host=new URL(item.homepage).hostname;officialHomepage=service==='prime'?/^(?:www\.)?(?:amazon\.com|primevideo\.com)$/.test(host):/^(?:www\.)?(?:disneyplus\.com|hulu\.com)$/.test(host);}catch{}
+  const name=movieOriginalEvidence[service].name;
+  const officialHomepage=officialMovieService(item,service);
   const identified=debut.some(r=>name.test(r.note||''))||(officialHomepage&&debut.every(r=>/^(?:internet|digital|streaming)?$/i.test((r.note||'').trim())));
   if(!identified)return false;
   // A later subscription window is not an original premiere. Allow a short awards run.
   return !dated.some(r=>r.release_date.slice(0,10)<first&&(r.type===3||r.type===5||r.type===6||(r.type===2&&r.release_date.slice(0,10)<shiftedDate(first,-31))));
 }
 export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
-export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',genre='all',page=1,ids=[]},now=today()){
+export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',genre='all',page=1,ids=[],scope='originals',reality='exclude'},now=today()){
   const params=new URLSearchParams({language:'en-US',with_original_language:'en',page});
   if(service==='theaters'){
     params.set('region','US');params.set('with_release_type','3');
@@ -90,19 +116,27 @@ export function catalogQuery({type='movie',service='all',when='now',network='all
     const field=type==='tv'?'first_air_date':'primary_release_date';
     params.set(field+'.gte',shiftedDate(now,1));params.set(field+'.lte',shiftedDate(now,90));params.set('sort_by',field+'.asc');
     // Original-production affiliations are not promised streaming arrival dates.
-    if(service!=='all'){
+    if(scope==='originals'&&service!=='all'){
       if(type==='tv'&&originalNetworks[service])params.set('with_networks',originalNetworks[service]);
       else if(type==='movie'&&service==='netflix')params.set('sort_by','popularity.desc');
       else if(type==='movie'&&service==='apple')params.set('with_companies','194232');
-      else {params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types','flatrate');}
-    }
+      // Future originals need no current subscription offer. Verify details after discovery.
+      else params.set('sort_by','popularity.desc');
+    }else if(service!=='all'){params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types','flatrate');}
   }else{
     for(const [key,value] of Object.entries(discoveryOrder(type,now)))params.set(key,value);
     params.set('watch_region','US');params.set('with_watch_providers',ids.join('|'));params.set('with_watch_monetization_types',service==='all'?'flatrate|free|ads':'flatrate');
     if(service==='max'&&type==='tv'&&networkIds[network])params.set('with_networks',networkIds[network]);
   }
-  if(type==='tv'&&originalsOnlyServices.includes(service))params.set('with_networks',originalNetworks[service]);
-  if(kind==='doc')params.set('with_genres','99');if(kind==='standup')params.set('with_keywords','9716');
+  if(type==='tv'&&service!=='theaters'&&scope==='originals'){
+    const networks=service==='all'?[...new Set(originalsOnlyServices.flatMap(id=>originalNetworks[id].split('|')))].join('|'):originalNetworks[service];
+    if(networks)params.set('with_networks',service==='max'&&networkIds[network]?networkIds[network]:networks);
+  }
+  if(type==='tv'){
+    if(reality==='exclude')params.set('without_genres',realityGenres.join(','));
+    if(reality==='only')params.set('with_genres',realityGenres.join('|'));
+  }
+  if(kind==='doc')params.set('with_genres',[params.get('with_genres'),'99'].filter(Boolean).join(','));if(kind==='standup')params.set('with_keywords','9716');
   if(kind==='movie'){params.set('without_genres','99');params.set('without_keywords','9716');}
   const filter=browseGenreFilter(genre,type);
   if(filter.genres)params.set('with_genres',[params.get('with_genres'),filter.genres].filter(Boolean).join(','));
