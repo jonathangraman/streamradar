@@ -7,9 +7,7 @@ const region='US';
 let theaterZip=normalizeZip(readJSON('sr_theater_zip',''));
 const preferences=readJSON('sr_preferences_v1',{});
 let hideWatched=preferences.hideWatched!==false;
-let scope=preferences.catalogScope==='catalog'?'catalog':'originals',reality=['exclude','include','only'].includes(preferences.reality)?preferences.reality:'exclude';
-genre=reality==='only'?'reality':'all';
-reality=genre==='reality'?'only':'include';
+let scope=preferences.catalogScope==='catalog'?'catalog':'originals',reality='exclude';
 let pickMedia=['all','movie','tv'].includes(preferences.media)?preferences.media:'all',pickGenre=pickGenres.some(g=>g.id===preferences.genre)?preferences.genre:'all';
 const pickYears=Array.from({length:new Date().getFullYear()-1899},(_,i)=>String(new Date().getFullYear()-i));
 let pickYear=pickYears.includes(String(preferences.year))?String(preferences.year):'all',similarSeed=null;
@@ -81,6 +79,8 @@ function renderServices(){
   $('theater-info').hidden=service!=='theaters';renderTheaterPanels();
   $('home-tabs').hidden=true;
   $('kind').querySelector('[value="tv"]').disabled=service==='theaters';
+  $('kind').querySelector('[value="reality"]').disabled=service==='theaters';
+  reality=kind==='reality'?'only':'exclude';
   $('kind').value=kind;
   $('genre').value=genre;
   $('catalog-scope').value=scope;$('catalog-scope').disabled=service==='theaters';
@@ -182,7 +182,7 @@ async function loadCatalog(more=false){
     page=scannedPage;totalPages=lastTotalPages;results=[...new Map([...results,...added.values()].map(x=>[keyOf(x),x])).values()];
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
-    $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No verified titles match these filters. Choose Reality & talk in Genre, or Full catalog for licensed titles.</div>';
+    $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No verified titles match these filters. Choose Reality & talk in Show, or Full catalog for licensed titles.</div>';
     $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals only · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     if(incomplete)$('count-lbl').textContent+=' · Some results unavailable; retry to check all categories';
     $('load-more').hidden=page>=totalPages;
@@ -394,7 +394,7 @@ $('catalog-scope').addEventListener('change',()=>{scope=$('catalog-scope').value
 $('when').addEventListener('change',()=>{when=$('when').value;network='all';renderServices();loadCatalog();});
 $('network').addEventListener('change',()=>{network=$('network').value;if(network!=='all'){type='tv';kind='tv';}renderServices();loadCatalog();});
 $('genre').innerHTML=browseGenres.map(g=>`<option value="${g.id}">${esc(g.label)}</option>`).join('');
-$('genre').addEventListener('change',()=>{genre=$('genre').value;reality=genre==='reality'?'only':genre==='all'?'include':'exclude';if(genre==='doc'&&kind==='movie')kind='doc';try{persistPreferences();}catch{toast('Could not save genre preference.');}renderServices();loadCatalog();});
+$('genre').addEventListener('change',()=>{genre=$('genre').value;if(genre==='doc'&&kind==='movie')kind='doc';try{persistPreferences();}catch{toast('Could not save genre preference.');}renderServices();loadCatalog();});
 $('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&genre==='doc')genre='all';if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
   try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
