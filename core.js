@@ -22,6 +22,19 @@ export function isStandup(item) {
   return keywords.some(k => k.id===9716 || /^(stand-up comedy|stand up comedy|stand-up special|standup comedy)$/i.test(k.name)) || /\bstand[- ]?up (comedy|special|performance)|\bcomedy special\b/i.test(item.title || item.name || '');
 }
 export function isNarrativeMovie(item){return (item.type||item.media_type)==='movie'&&!(item.genre_ids||[]).includes(99)&&!(item.genres||[]).some(g=>g.id===99)&&!isStandup(item);}
+export function releaseMilestone(item,now=today()) {
+  if(item?.type!=='tv')return null;
+  const ep=item.last_episode_to_air;
+  const season=(item.seasons||[]).find(s=>s.season_number===ep?.season_number);
+  const episodes=item.releaseSeasonEpisodes;
+  if(!season||!Array.isArray(episodes)||episodes.length<2||!Number.isInteger(season.episode_count)||season.episode_count<2)return null;
+  const numbered=episodes.filter(e=>Number.isInteger(e.episode_number)&&e.episode_number>0);
+  if(numbered.length!==season.episode_count||new Set(numbered.map(e=>e.episode_number)).size!==season.episode_count||numbered.some(e=>!/^\d{4}-\d{2}-\d{2}$/.test(e.air_date||'')))return null;
+  const dates=new Set(numbered.map(e=>e.air_date));
+  const date=numbered[0].air_date;
+  if(dates.size===1&&date<=now&&date>=shiftedDate(now,-90))return {text:'ALL EPISODES RELEASED',date,kind:'season'};
+  return null;
+}
 export function contentLabels(item, now=today()) {
   const labels=[];
   if(isStandup(item))labels.push({kind:'standup',text:'STAND-UP'});
@@ -30,7 +43,7 @@ export function contentLabels(item, now=today()) {
   if(item.catalogService && item.catalogService!=='all' && !isOriginalSeries(item,item.catalogService))return labels;
   const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-90);
   const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=cutoff.toISOString().slice(0,10)).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
-  if(season)labels.push({kind:'season',text:'SEASON PREMIERE',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
+  if(season&&!releaseMilestone(item,now))labels.push({kind:'season',text:'SEASON PREMIERE',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
   const episode=item.last_episode_to_air, week=new Date(now+'T12:00:00Z');week.setUTCDate(week.getUTCDate()-7);
   const weekday=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).toUpperCase()+' '+Number(date.slice(5,7))+'/'+Number(date.slice(8,10));
   const next=item.next_episode_to_air;
