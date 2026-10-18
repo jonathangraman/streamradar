@@ -1,4 +1,4 @@
-import {matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -19,7 +19,7 @@ function refreshHome(){const q=$('home-search-input').value.trim();if(q)search(q
 const initialRoute=parseRoute(location.hash);
 let route={view:'home'},historyDepth=0,loading=false,toastTimer;
 const items=new Map(),cache=new Map(),sequence=createSequence(),detailSequence=createSequence(),actorSequence=createSequence();
-const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['keywords','seasons','genres','last_episode_to_air','next_episode_to_air'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
+const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['keywords','seasons','genres','last_episode_to_air','next_episode_to_air','releaseSeasonEpisodes'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
 const image=(path,size='w342')=> typeof path==='string'&&/^\/[\w.\/-]+$/.test(path)?IMG+size+path:'';
 function poster(item){const src=image(item.poster);return src?`<img src="${src}" alt="" loading="lazy">`:'<div class="no-img" aria-hidden="true">🎬</div>';}
 function tags(item,placement){return contentLabels(item).filter(label=>!placement||(placement==='poster'?label.kind==='season':label.kind!=='season')).map(label=>`<span class="content-tag tag-${label.kind}"${label.description?` title="${esc(label.description)}"`:''}>${esc(label.text)}</span>`).join('');}
@@ -92,6 +92,7 @@ function renderServices(){
 }
 function finaleLabel(item){
   if(item?.type!=='tv')return null;
+  if(releaseMilestone(item))return null;
   const ep=item.last_episode_to_air;
   if(!ep?.air_date||!Number.isInteger(ep.episode_number)||ep.episode_number<1||!Number.isInteger(ep.season_number)||ep.season_number<1)return null;
   if(ep.air_date<shiftedDate(today(),-30)||ep.air_date>today())return null;
@@ -100,7 +101,7 @@ function finaleLabel(item){
   const ended=['Ended','Canceled'].includes(item.status)&&!item.next_episode_to_air;
   return {text:ended?'SERIES FINALE':'SEASON FINALE',date:ep.air_date};
 }
-function posterTags(item){const finale=finaleLabel(item);return (finale?`<span class="content-tag tag-season" title="Aired ${esc(formatDate(finale.date))}">${finale.text}</span>`:'')+tags(item,'poster')+(when==='soon'&&item.upcomingSeason>1?`<span class="content-tag tag-season">SEASON ${Number(item.upcomingSeason)} SOON</span>`:'');}
+function posterTags(item){const finale=releaseMilestone(item)||finaleLabel(item);return (finale?`<span class="content-tag tag-season" title="Aired ${esc(formatDate(finale.date))}">${finale.text}</span>`:'')+tags(item,'poster')+(when==='soon'&&item.upcomingSeason>1?`<span class="content-tag tag-season">SEASON ${Number(item.upcomingSeason)} SOON</span>`:'');}
 function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${posterTags(item)}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${when==='soon'&&item.upcomingDate?'Expected':item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate((when==='soon'&&item.upcomingDate)||item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
 async function loadCatalog(more=false){
   const request=sequence.next(),wanted={type,service,region,kind,genre,when,network,scope,reality,page:more?page+1:1};loading=true;
@@ -215,7 +216,14 @@ async function enrichLabels(titles,request){
     const stored=items.get(keyOf(item));
     const detail=stored?.seasons&&stored?.keywords?stored:await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`);
     if(!sequence.current(request))return;
-    const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres,last_episode_to_air:detail.last_episode_to_air,next_episode_to_air:detail.next_episode_to_air});
+    let releaseSeasonEpisodes=stored?.releaseSeasonEpisodes;
+    const ep=detail.last_episode_to_air;
+    const currentSeason=(detail.seasons||[]).find(s=>s.season_number===ep?.season_number);
+    if(item.type==='tv'&&currentSeason?.episode_count>1&&currentSeason.episode_count<=40&&ep?.air_date>=shiftedDate(today(),-90)&&ep.air_date<=today()&&!releaseSeasonEpisodes){
+      try{const seasonData=await api(`/tv/${item.id}/season/${ep.season_number}`);releaseSeasonEpisodes=seasonData.episodes;}catch{}
+    }
+    if(!sequence.current(request))return;
+    const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres,last_episode_to_air:detail.last_episode_to_air,next_episode_to_air:detail.next_episode_to_air,releaseSeasonEpisodes});
     const node=$('grid').querySelector(`[data-key="${keyOf(item)}"] .card-tags`);
     if(node)node.innerHTML=tags(enriched,'body');
     const overlay=$('grid').querySelector(`[data-key="${keyOf(item)}"] .poster-tags`);if(overlay)overlay.innerHTML=posterTags(enriched);
