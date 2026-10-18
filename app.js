@@ -32,7 +32,8 @@ async function json(url,{signal}={}){
 async function api(path,options={}){
   const [name,query='']=path.split('?'),params=new URLSearchParams(query);params.set('path',name);
   const url='/api/tmdb?'+params.toString(),hit=cache.get(url);
-  if(hit&&Date.now()-hit.time<300000)return structuredClone(hit.data);
+  const ttl=/^\/(movie|tv)\/\d+(?:\?|$)/.test(name)?1800000:300000;
+  if(hit&&Date.now()-hit.time<ttl)return structuredClone(hit.data);
   const data=await json(url,options);cache.set(url,{time:Date.now(),data});return structuredClone(data);
 }
 async function mapLimit(values,limit,fn){let index=0;const out=[];await Promise.all(Array.from({length:Math.min(limit,values.length)},async()=>{while(index<values.length){const i=index++;try{out[i]=await fn(values[i],i);}catch(e){out[i]={_error:e.message};}}}));return out;}
@@ -186,6 +187,14 @@ async function loadCatalog(more=false){
       incoming=incoming.filter(item=>matchesReality(item,wanted.service==='theaters'?'include':wanted.reality));
       for(const item of visibleTitles(incoming))added.set(keyOf(item),{...item,catalogService:wanted.service});
       scannedPage=wanted.page;
+      // Display verified matches immediately instead of waiting for every scan pass.
+      if(!more&&added.size&&sequence.current(request)){
+        const preview=[...added.values()].sort(wanted.when==='soon'
+          ?(a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||'')
+          :recentActivityFirst);
+        $('grid').innerHTML=preview.map(card).join('');
+        $('count-lbl').textContent=`Showing ${preview.length} verified titles · finding more…`;
+      }
       if(added.size>=catalogBatchTarget||wanted.page>=lastTotalPages||incomplete)break;
       wanted.page++;
     }
@@ -203,7 +212,8 @@ async function loadCatalog(more=false){
 async function enrichLabels(titles,request){
   await mapLimit(titles,4,async item=>{
     if(!sequence.current(request))return;
-    const detail=await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`);
+    const stored=items.get(keyOf(item));
+    const detail=stored?.seasons&&stored?.keywords?stored:await api(`/${item.type}/${item.id}?append_to_response=credits,keywords`);
     if(!sequence.current(request))return;
     const enriched=remember({...item,keywords:detail.keywords,seasons:detail.seasons,genres:detail.genres,last_episode_to_air:detail.last_episode_to_air,next_episode_to_air:detail.next_episode_to_air});
     const node=$('grid').querySelector(`[data-key="${keyOf(item)}"] .card-tags`);
