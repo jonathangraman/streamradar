@@ -6,7 +6,7 @@ import tmdb from '../api/tmdb.js';
 import ratings from '../api/ratings.js';
 const root=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 try{process.loadEnvFile(path.join(root,'.env.local'));}catch{}
-const files=new Set(['index.html','styles.css','app.js','core.js','legacy-config.js','manifest.json','sw.js','icon-192.png','icon-512.png']);
+const files=new Set(['index.html','styles.css','app.js','core.js','accounts.js','auth-client.js','library-sync.js','vendor/supabase.js','legacy-config.js','manifest.json','sw.js','icon-192.png','icon-512.png']);
 http.createServer(async(req,res)=>{
   res.status=n=>{res.statusCode=n;return res;};res.json=d=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d));};
   const name=new URL(req.url,'http://localhost').pathname;
@@ -15,4 +15,4 @@ http.createServer(async(req,res)=>{
   if(!files.has(file)){res.writeHead(404).end();return;}
   res.setHeader('Content-Type',file.endsWith('.png')?'image/png':file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'application/javascript');
   res.setHeader('Cache-Control','no-cache');res.end(fs.readFileSync(path.join(root,file)));
-}).listen(8765,'127.0.0.1',()=>console.log('StreamRadar preview: http://127.0.0.1:8765'));
+}).listen(Number(process.env.PORT||8765),'127.0.0.1',()=>console.log('StreamRadar preview on port '+(process.env.PORT||8765)));
