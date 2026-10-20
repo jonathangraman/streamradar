@@ -31,8 +31,9 @@ GET /api/ai-picks reports provider/configured/enabled without disclosing the
 key or calling Anthropic. Usage limits below bound attempts, not dollars.
 
 Apply `20261020192014_private_ai_picks_limits.sql` before enabling AI. Atomic
-PostgreSQL limits allow 5 attempts per user per UTC day, a 30-second cooldown,
-and 200 attempts for the entire application per UTC month. Failed generation
+PostgreSQL limits retain a 30-second cooldown and 200 attempts for the entire
+application per UTC month. The owner removed the per-person daily cap through
+20261020195920_remove_ai_daily_limit.sql; usage counts remain informational. Failed generation
 attempts also count. Only quota counters are stored, in the unexposed
 `streamradar_ai` schema with RLS and no direct user table grants. The public RPC
 is an invoker wrapper around a private function that checks `auth.uid()`.

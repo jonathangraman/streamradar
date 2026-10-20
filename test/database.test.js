@@ -28,13 +28,13 @@ test('real PostgreSQL policies isolate two users and reject anonymous access and
   await asUser(a);await db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{...patch[0],expected_user:a,state:{watchlisted:false,dismissed:true}}])]);
   assert.deepEqual((await db.query('select state from public.library_entries')).rows[0].state,{watchlisted:false,rating:5,dismissed:true});
   // Real PostgreSQL quota checks: direct table writes are forbidden, cooldown
-  // and per-user limits persist, and all users share the monthly safety cap.
+  // persists without a daily cap, and all users share the monthly safety cap.
   assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,true);
   assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,false);
   await assert.rejects(db.exec('select * from streamradar_ai.ai_pick_usage'),/permission denied/);
   await asUser(b);assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,true);
   await db.exec("reset role;update streamradar_ai.ai_pick_usage set calls=5,last_call=now()-interval '1 minute'");
-  await asUser(a);assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,false);
+  await asUser(a);assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,true);
   await db.exec("reset role;update streamradar_ai.ai_pick_usage set day=current_date-1,last_call=now()-interval '1 minute'");
   await asUser(a);assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,true);
   await db.exec("reset role;update streamradar_ai.ai_pick_usage set calls=0,last_call=now()-interval '1 minute';update streamradar_ai.ai_pick_month set calls=200");
