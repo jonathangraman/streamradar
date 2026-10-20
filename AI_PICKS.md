@@ -7,7 +7,7 @@ The regular recommendation algorithm remains available on failure or exhaustion.
 The browser supplies up to 24 real candidate IDs after applying its existing
 type/genre/year/subscription filters. The server verifies the Supabase access
 token, reads that owner's library under RLS, and independently loads English,
-released, US subscription titles from TMDB. Up to 64 recent saved titles/ratings
+released, US subscription titles from TMDB. Up to 64 recent saved titles/ratings/feedback
 and bounded candidate descriptions go to the model; email, user ID, auth tokens
 and API credentials do not. The model can only select candidate keys, with short
 reasons. Both server and client reject duplicates or unknown selections. Reasons
@@ -56,3 +56,5 @@ and retries once with the unique active Default workspace. It never chooses anot
 workspace, changes permissions, logs workspace contents, or retries an ambiguous
 inference. Workspace-scoped keys continue without discovery. Transport tests use
 mock HTTP responses and spend no credits.
+
+Successful AI batches now sync as private history (last 20). See ACCOUNT_FEATURES.md.

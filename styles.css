@@ -215,6 +215,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .fy-empty .ei{font-size:40px;margin-bottom:12px;}
 .gen-btn{width:100%;padding:14px;background:linear-gradient(135deg,#E84C4C,#9B2FC9);color:#fff;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:16px;letter-spacing:.02em;}
 .gen-btn:disabled{opacity:.5;cursor:not-allowed;}
+.pick-history{margin:0 0 18px;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;}
+.pick-history label{display:grid;gap:6px;font-size:13px;max-width:480px;}
+.pick-history select{width:100%;min-width:0;min-height:42px;padding:9px;color:var(--text);background:var(--bg3);border:1px solid #626e83;border-radius:8px;font-size:14px;}
+.pick-history .data-note{margin:8px 0 0;}
+.taste-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;}
+.taste-actions .text-button{border:1px solid #626e83;border-radius:8px;padding:8px 10px;min-height:38px;}
+.taste-actions [aria-pressed="true"]{background:#453366;color:#fff;border-color:#bb88ee;}
+.account-delete-entry{border-top:1px solid var(--border);margin-top:18px;padding-top:14px;}
+.account-delete-entry [data-account-action="delete"]{color:#ffb5b5;}
+#delete-account-form{display:grid;gap:14px;margin:16px 0;}
+#delete-account-form label{display:grid;gap:6px;}
+#delete-confirmation{width:100%;min-height:44px;padding:10px;border:1px solid #8992a5;border-radius:8px;background:var(--bg);color:var(--text);font-size:16px;}
+.btn-danger{min-height:44px;border:1px solid #ff8585;border-radius:8px;padding:10px;background:#872f35;color:#fff;font-size:14px;font-weight:700;cursor:pointer;}
+.btn-danger:disabled{opacity:.5;cursor:wait;}
 .pick-actions{display:flex;gap:10px;flex-wrap:wrap;}
 .pick-actions .gen-btn{flex:1 1 180px;width:auto;}
 .pick-actions .ai-picks-button{background:var(--surface,#242438);border:1px solid #a56bdb;}

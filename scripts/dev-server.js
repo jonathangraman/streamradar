@@ -7,7 +7,7 @@ import ratings from '../api/ratings.js';
 import aiPicks from '../api/ai-picks.js';
 const root=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 try{process.loadEnvFile(path.join(root,'.env.local'));}catch{}
-const files=new Set(['index.html','styles.css','app.js','core.js','accounts.js','auth-client.js','library-sync.js','vendor/supabase.js','legacy-config.js','manifest.json','sw.js','icon-192.png','icon-512.png']);
+const files=new Set(['index.html','styles.css','app.js','core.js','accounts.js','auth-messages.js','auth-client.js','library-sync.js','vendor/supabase.js','legacy-config.js','manifest.json','sw.js','icon-192.png','icon-512.png']);
 http.createServer(async(req,res)=>{
   res.status=n=>{res.statusCode=n;return res;};res.json=d=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d));};
   const name=new URL(req.url,'http://localhost').pathname;

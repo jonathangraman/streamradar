@@ -53,3 +53,11 @@ test('status verifies configuration without exposing a secret or calling any pro
   assert.equal(res.code,200);assert.deepEqual(res.body,{provider:'Claude',configured:true,enabled:false});assert(!JSON.stringify(res.body).includes('test-secret'));
  }finally{if(saved===undefined)delete process.env.ANTHROPIC_API_KEY;else process.env.ANTHROPIC_API_KEY=saved;}
 });
+test('explicit taste feedback is included in private AI history',async()=>{
+ const f=fixture({generate:async options=>{
+  const {history}=JSON.parse(options.prompt);assert.equal(history.find(x=>x.title==='Feedback title').preference,'less');
+  return {output:{picks:[{key:'movie:4',reason:'A different direction.'}]}};
+ }});
+ f.client.from=()=>({select:()=>({eq:()=>({order:()=>({limit:async()=>({data:[...history,{media_type:'tv',tmdb_id:10,item:{title:'Feedback title'},state:{preference:'less'}}]})})})})});
+ assert.equal((await f.run()).code,200);
+});

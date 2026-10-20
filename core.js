@@ -198,7 +198,17 @@ export function matchesPick(item,media,genre){
   if(keyword)return (genre!=='indie'||item.type==='movie')&&(item.keywords?.keywords||item.keywords?.results||[]).some(k=>k.id===keyword);
   return (item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(pickGenreIds(genre,item.type)));
 }
-export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],dismissed:[],legacyImported:false}; }
+export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],dismissed:[],legacyImported:false,feedback:{},feedbackTitles:[],services:null,history:[]}; }
+export function cleanServices(value){return Array.isArray(value)?[...new Set(value.filter(id=>serviceDefinitions.some(s=>s.id===id&&!['all','theaters'].includes(id))))]:null;}
+export function cleanHistory(value){
+ const batches=new Map();
+ for(const batch of Array.isArray(value)?value:[]){
+  if(!batch||!/^([a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12})$/i.test(batch.id)||!Array.isArray(batch.picks)||!Number.isFinite(Date.parse(batch.createdAt)))continue;
+  const picks=batch.picks.slice(0,12).map(x=>x&&normalize(x)).filter(Boolean).map(x=>({id:x.id,type:x.type,title:x.title.slice(0,500),poster:typeof x.poster==='string'?x.poster.slice(0,500):'',date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:'',original_language:typeof x.original_language==='string'?x.original_language.slice(0,5):'',genre_ids:Array.isArray(x.genre_ids)?x.genre_ids.filter(Number.isInteger).slice(0,20):[],vote_average:Number.isFinite(x.vote_average)?Math.max(0,Math.min(10,x.vote_average)):0,reason:String(x.reason||'').slice(0,500)}));
+  if(picks.length&&!batches.has(batch.id))batches.set(batch.id,{id:batch.id,createdAt:new Date(batch.createdAt).toISOString(),model:String(batch.model||'Claude').slice(0,100),filters:{media:String(batch.filters?.media||'all').slice(0,10),genre:String(batch.filters?.genre||'all').slice(0,20),year:String(batch.filters?.year||'all').slice(0,4),services:cleanServices(batch.filters?.services)||[]},picks});
+ }
+ return [...batches.values()].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,20);
+}
 export function migrateLegacy(watchlist=[], seen=[], ratings={}) {
   const state=emptyLibrary();
   state.watchlist=watchlist.map(x=>normalize(x,x.type || 'movie')).filter(Boolean);
@@ -214,7 +224,10 @@ export function migrateLegacy(watchlist=[], seen=[], ratings={}) {
 export function updateLibrary(state, action, item, stars) {
   const valid=normalize(item); if(!valid) throw new Error('This title has no valid identity.');
   const next=structuredClone(state), key=keyOf(valid);
-  if(action==='watch') {
+  if(action==='more'||action==='less'){
+    next.feedback={...next.feedback,[key]:next.feedback?.[key]===action?null:action};
+    next.feedbackTitles=[...new Map([...(next.feedbackTitles||[]),valid].map(x=>[keyOf(x),x])).values()];
+  } else if(action==='watch') {
     next.watchlist=next.watchlist.some(x=>keyOf(x)===key) ? next.watchlist.filter(x=>keyOf(x)!==key) : [...next.watchlist,valid];
   } else if(action==='seen' || action==='rate') {
     next.watchlist=next.watchlist.filter(x=>keyOf(x)!==key);
@@ -276,15 +289,17 @@ export function matchesPickYear(item,year='all'){
 }
 export function recommendationSeeds(library,media='all'){
  const unique=[...new Map([...library.seen,...library.watchlist].map(x=>[keyOf(x),x])).values()].filter(x=>media==='all'||x.type===media);
- const rated=unique.filter(x=>library.ratings[keyOf(x)]>=4).sort((a,b)=>library.ratings[keyOf(b)]-library.ratings[keyOf(a)]).slice(0,4);
- const interested=library.watchlist.slice().reverse().filter(x=>(media==='all'||x.type===media)&&!library.ratings[keyOf(x)]&&!(library.dismissed||[]).includes(keyOf(x))).slice(0,2);
- return [...new Map([...rated,...interested].map(x=>[keyOf(x),{...x,seedWeight:library.ratings[keyOf(x)]===5?5:library.ratings[keyOf(x)]===4?3:1.5,seedReason:library.ratings[keyOf(x)]>=4?'rated':'watchlist'}])).values()];
+ const rated=unique.filter(x=>library.ratings[keyOf(x)]>=4&&library.feedback?.[keyOf(x)]!=='less'&&!(library.dismissed||[]).includes(keyOf(x))).sort((a,b)=>library.ratings[keyOf(b)]-library.ratings[keyOf(a)]).slice(0,4);
+ const favorites=(library.feedbackTitles||[]).filter(x=>library.feedback?.[keyOf(x)]==='more'&&!(library.dismissed||[]).includes(keyOf(x))&&(media==='all'||x.type===media)).slice(-2);
+ const interested=library.watchlist.slice().reverse().filter(x=>(media==='all'||x.type===media)&&!library.ratings[keyOf(x)]&&library.feedback?.[keyOf(x)]!=='less'&&!(library.dismissed||[]).includes(keyOf(x))).slice(0,2);
+ return [...new Map([...rated,...favorites,...interested].map(x=>[keyOf(x),{...x,seedWeight:library.feedback?.[keyOf(x)]==='more'?4:library.ratings[keyOf(x)]===5?5:library.ratings[keyOf(x)]===4?3:1.5,seedReason:library.feedback?.[keyOf(x)]==='more'?'more':library.ratings[keyOf(x)]>=4?'rated':'watchlist'}])).values()];
 }
 export function tasteProfile(library){
  const weights={};
- for(const item of new Map([...library.watchlist,...library.seen].map(x=>[keyOf(x),x])).values()){
+ for(const item of new Map([...library.watchlist,...library.seen,...(library.feedbackTitles||[])].map(x=>[keyOf(x),x])).values()){
   const rating=library.ratings[keyOf(item)],dismissed=(library.dismissed||[]).includes(keyOf(item));
-  const weight=dismissed?-2:rating===5?3:rating===4?2:rating<=2?-3:!rating&&library.watchlist.some(x=>keyOf(x)===keyOf(item))?0.75:0;
+  const explicit=library.feedback?.[keyOf(item)];
+  const weight=explicit==='more'?3:explicit==='less'?-4:(dismissed?-2:rating===5?3:rating===4?2:rating<=2?-3:!rating&&library.watchlist.some(x=>keyOf(x)===keyOf(item))?0.75:0);
   for(const genre of item.genre_ids||item.genres?.map(g=>g.id)||[]){const key=item.type+':'+genre;weights[key]=(weights[key]||0)+weight;}
  }
  return weights;

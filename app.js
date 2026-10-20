@@ -2,7 +2,7 @@ import {matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTa
 import {legacy} from './legacy-config.js';
 import {mountAccounts,accountState} from './accounts.js';
 import {client as accountClient} from './auth-client.js';
-import {recommendationSeeds,tasteProfile} from './core.js';
+import {recommendationSeeds,tasteProfile,cleanServices,cleanHistory} from './core.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
 let library=emptyLibrary(),type='movie',service='all',kind='all',genre='all',when='now',network='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
@@ -15,7 +15,11 @@ let pickMedia=['all','movie','tv'].includes(preferences.media)?preferences.media
 const pickYears=Array.from({length:new Date().getFullYear()-1899},(_,i)=>String(new Date().getFullYear()-i));
 let pickYear=pickYears.includes(String(preferences.year))?String(preferences.year):'all',similarSeed=null;
 let pickServices=Array.isArray(preferences.services)?preferences.services.filter(id=>serviceDefinitions.some(s=>s.id===id&&!['all','theaters'].includes(id))):[];
-function persistPreferences(){localStorage.setItem('sr_preferences_v1',JSON.stringify({hideWatched,catalogScope:scope,reality,media:pickMedia,genre:pickGenre,year:pickYear,services:pickServices}));}
+function persistPreferences(){
+  const guestPreferences=readJSON('sr_preferences_v1',{});
+  localStorage.setItem('sr_preferences_v1',JSON.stringify({hideWatched,catalogScope:scope,reality,media:pickMedia,genre:pickGenre,year:pickYear,services:accountState.user?(guestPreferences.services||[]):pickServices}));
+  if(accountState.user&&JSON.stringify(library.services)!==JSON.stringify(pickServices))save({...library,services:[...pickServices]});
+}
 const visibleTitles=titles=>unseenTitles(titles,library,hideWatched);
 function refreshHome(){const q=$('home-search-input').value.trim();if(q)search(q);else loadCatalog();}
 
@@ -47,13 +51,16 @@ function validLibrary(data){
   const out=migrateLegacy(data.watchlist,data.seen,data.ratings);
   for(const [key,value] of Object.entries(data.ratings))if(/^(movie|tv):[1-9]\d*$/.test(key)&&Number.isInteger(value)&&value>=1&&value<=5)out.ratings[key]=value;
   out.dismissed=Array.isArray(data.dismissed)?[...new Set(data.dismissed.filter(k=>/^(movie|tv):[1-9]\d*$/.test(k)))]:[];
+  out.feedback={};for(const [key,value] of Object.entries(data.feedback||{}))if(/^(movie|tv):[1-9]\d*$/.test(key)&&['more','less'].includes(value))out.feedback[key]=value;
+  out.feedbackTitles=(Array.isArray(data.feedbackTitles)?data.feedbackTitles:[]).map(x=>x&&normalize(x)).filter(Boolean);
+  out.services=cleanServices(data.services);out.history=cleanHistory(data.history);
   out.recs=data.recs.map(x=>normalize(x)).filter(Boolean).filter(x=>!out.dismissed.includes(keyOf(x)));out.legacyImported=!!data.legacyImported;out.recommendationSeed=data.recommendationSeed?normalize(data.recommendationSeed):null;return out;
 }
 function save(next){try{if(accountState.user){accountState.cloud.save(next);library=next;}else library=commitLibrary(localStorage,next);}catch(error){throw new Error(error.message||'Could not save on this browser. Free some storage or export your library.');}}
 function loadLibrary(){
   const saved=readJSON('sr_library_v2',null);
   try{library=saved?validLibrary(saved):migrateLegacy(readJSON('sr_wl',[]),readJSON('sr_seen',[]),readJSON('sr_ratings',{}));}catch{library=emptyLibrary();toast('Could not read your library. Your original data has not been deleted.');}
-  [...library.watchlist,...library.seen,...library.recs].forEach(remember);
+  [...library.watchlist,...library.seen,...library.recs,...(library.feedbackTitles||[]),...(library.history||[]).flatMap(batch=>batch.picks)].forEach(remember);
   // No paid API key is required by this version; remove the obsolete exposed copy.
   try{localStorage.removeItem('sr_ak');}catch{}
 }
@@ -76,7 +83,7 @@ async function importLegacy(){
     if(route.view==='watchlist')renderWatchlist();
   }catch{$('storage-status').textContent='Old cloud records could not be imported. They have not been deleted. New changes are saved on this browser.';$('legacy-retry').hidden=false;}
 }
-function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(action==='dismiss'?'Not interested saved.':action==='watch'?'Watchlist updated.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
+function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(['more','less'].includes(action)?'Taste feedback saved. Future picks will use it.':action==='dismiss'?'Not interested saved.':action==='watch'?'Watchlist updated.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
 
 function renderServices(){
   $('network-filter').hidden=service!=='max'||when==='soon';
@@ -341,10 +348,13 @@ function renderWatchlist(){
 }
 function renderForYou(){
   const seeds=recommendationSeeds(library);
-  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><div class="pick-actions"><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button> <button class="gen-btn ai-picks-button" data-action="ai-recommend"${recommending||!accountState.user?' disabled':''}>Get AI picks</button></div><p class="data-note">${accountState.user?'Optional AI: sends a limited selection of your saved titles and ratings to an AI provider. Your email is not sent. Optional; regular picks are always available.':'Sign in to try optional AI picks based on your private library.'}</p><p class="data-note" role="status">${esc(aiNotice)}</p><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Picks based on your ratings and watchlist. Ratings carry more weight; low ratings reduce similar genres.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices are saved with your library.</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
+  const historyBatch=(library.history||[]).find(x=>x.id===historyId);
+  const displayPicks=historyBatch?historyBatch.picks:unseenTitles(library.recs,library,true).filter(x=>!(library.dismissed||[]).includes(keyOf(x)));
+  $('fy-inner').innerHTML=`<section class="pick-history"><label for="pick-history">Your AI pick history<select id="pick-history"><option value="">Latest picks</option>${(library.history||[]).map(batch=>`<option value="${batch.id}">${esc(new Date(batch.createdAt).toLocaleString())} · ${batch.picks.length} picks</option>`).join('')}</select></label><p class="data-note">${accountState.user?'Your last 20 AI batches sync with your account. Reopening one uses no AI credit.':'Sign in to keep AI picks across devices.'}${historyBatch?' Streaming availability may have changed; open a title to check.':''}</p></section><div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><div class="pick-actions"><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button> <button class="gen-btn ai-picks-button" data-action="ai-recommend"${recommending||!accountState.user?' disabled':''}>Get AI picks</button></div><p class="data-note">${accountState.user?'Optional AI: sends a limited selection of your saved titles, ratings and taste feedback to an AI provider. Your email is not sent. Optional; regular picks are always available.':'Sign in to try optional AI picks based on your private library.'}</p><p class="data-note" role="status">${esc(aiNotice)}</p><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Picks based on your ratings and watchlist. Ratings carry more weight; low ratings reduce similar genres.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices are saved with your library.</p>`+displayPicks.filter(isEnglish).map(item=>{
     const saved=library.watchlist.some(x=>keyOf(x)===keyOf(item));
-    return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
+    return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="taste-actions" aria-label="Taste feedback"><button class="text-button" data-action="more" data-key="${keyOf(item)}" aria-pressed="${library.feedback?.[keyOf(item)]==='more'}">More like this</button><button class="text-button" data-action="less" data-key="${keyOf(item)}" aria-pressed="${library.feedback?.[keyOf(item)]==='less'}">Less like this</button></div><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
   }).join('');
+  $('pick-history').value=historyBatch?.id||'';$('pick-history').disabled=recommending;$('pick-history').addEventListener('change',e=>{historyId=e.target.value;renderForYou();});
   $('pick-year').value=pickYear;$('pick-year').disabled=recommending;$('pick-year').addEventListener('change',e=>{pickYear=e.target.value;});
   document.querySelectorAll('.pick-services input').forEach(el=>el.addEventListener('change',()=>{pickServices=[...document.querySelectorAll('.pick-services input:checked')].map(x=>x.value);try{persistPreferences();}catch{toast('Could not save filter preferences.');}}));
   $('pick-media').value=pickMedia;$('pick-genre').value=pickGenre;
@@ -352,20 +362,20 @@ function renderForYou(){
   $('pick-media').addEventListener('change',e=>{pickMedia=e.target.value;if(pickMedia==='tv'&&pickGenre==='indie'){pickGenre='all';$('pick-genre').value='all';}});
   $('pick-genre').addEventListener('change',e=>{pickGenre=e.target.value;if(pickGenre==='indie'){pickMedia='movie';$('pick-media').value='movie';}});
 }
-let recommending=false,aiNotice='';
+let recommending=false,aiNotice='',historyId='',renderedAccountEpoch=-1;
 async function recommend(useAI=false){
   if(recommending)return;
   if(useAI&&!accountState.user){toast('Sign in to use AI picks.');return;}
-  recommending=true;aiNotice=useAI?'Finding titles for AI to compare…':'';
+  recommending=true;historyId='';aiNotice=useAI?'Finding titles for AI to compare…':'';
   const chosenMedia=pickMedia,chosenGenre=pickGenre,chosenYear=pickYear,chosenServices=[...pickServices],selectedSeed=similarSeed,accountEpoch=accountState.epoch,sourceLibrary=structuredClone(library);
   try{persistPreferences();}catch{toast('Preferences could not be saved; using them for these picks.');}renderForYou();
   try{
     const seeds=selectedSeed?[selectedSeed]:recommendationSeeds(sourceLibrary,chosenMedia);
-    const excluded=new Set([...library.watchlist,...library.seen,...seeds].map(keyOf).concat(library.dismissed||[]));
+    const excluded=new Set([...library.watchlist,...library.seen,...seeds].map(keyOf).concat(library.dismissed||[],Object.keys(library.feedback||{}).filter(k=>library.feedback[k])));
     const requests=seeds.flatMap(seed=>['recommendations','similar'].map(endpoint=>({seed,endpoint})));
     const batches=await mapLimit(requests,3,async({seed,endpoint})=>{
       const d=await api('/'+seed.type+'/'+seed.id+'/'+endpoint);
-      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,seed.type),relatedTo:keyOf(seed),affinity:(endpoint==='recommendations'?4:2)*(seed.seedWeight||3)/3,reason:selectedSeed?'Similar to '+seed.title:seed.seedReason==='watchlist'?'Because '+seed.title+' is on your watchlist':'Because you rated '+seed.title+' '+sourceLibrary.ratings[keyOf(seed)]+'/5'}));
+      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,seed.type),relatedTo:keyOf(seed),affinity:(endpoint==='recommendations'?4:2)*(seed.seedWeight||3)/3,reason:selectedSeed?'Similar to '+seed.title:seed.seedReason==='more'?'Because you asked for more like '+seed.title:seed.seedReason==='watchlist'?'Because '+seed.title+' is on your watchlist':'Because you rated '+seed.title+' '+sourceLibrary.ratings[keyOf(seed)]+'/5'}));
     });
     const related=batches.filter(Array.isArray).flat();
     if(accountState.epoch!==accountEpoch)return;
@@ -398,12 +408,13 @@ async function recommend(useAI=false){
     if(checked.length&&checked.every(x=>x?._error))throw new Error('Could not check streaming availability. Please retry.');
     let picks=checked.filter(x=>x&&!x._error&&!(library.dismissed||[]).includes(keyOf(x))&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))).slice(0,12);
     if(accountState.epoch!==accountEpoch)return;
+    let generatedBatch=null;
     if(useAI&&picks.length){
       try{
         const cloud=accountState.cloud;
         await cloud?.sync();
         if(accountState.epoch!==accountEpoch)return;
-        if(!cloud?.ready||Object.keys(cloud.pending).length)throw new Error('Sync your saved titles first, then try AI picks again.');
+        if(!cloud?.ready||(Object.keys(cloud.pending).length||Object.keys(cloud.pendingExtras||{}).length))throw new Error('Sync your saved titles first, then try AI picks again.');
         const {data:{session}}=await accountClient.auth.getSession();
         if(!session)throw new Error('Sign in to use AI picks.');
         const pool=checked.filter(x=>x&&!x._error&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))&&!(library.dismissed||[]).includes(keyOf(x))).slice(0,24);
@@ -420,13 +431,13 @@ async function recommend(useAI=false){
           const availability=item.reason.match(/Included with .*$/)?.[0]||'';
           return {...item,reason:'AI pick: '+p.reason+' '+availability};
         });
-        picks=aiPicks;aiNotice='AI picks based on your saved titles and ratings. Regular Refresh picks is always available.';
+        picks=aiPicks;generatedBatch={id:crypto.randomUUID(),createdAt:new Date().toISOString(),model:result.model,filters:{media:chosenMedia,genre:chosenGenre,year:chosenYear,services:chosenServices},picks:aiPicks};aiNotice='AI picks based on your saved titles and ratings. Regular Refresh picks is always available.';
       }catch(e){if(accountState.epoch!==accountEpoch)return;aiNotice=(e.name==='TimeoutError'?'AI took too long.':e.message)+' Showing regular picks.';}
     }
     if(accountState.epoch!==accountEpoch)return;
     picks=picks.filter(x=>!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))&&!(library.dismissed||[]).includes(keyOf(x)));
-    save({...library,recs:picks,recommendationSeed:selectedSeed});picks.forEach(remember);if(!picks.length)toast('No unseen streaming matches. Try Any year, another genre, or more services.');
-  }catch(e){toast(e.message);}finally{recommending=false;if(route.view==='foryou')renderForYou();}
+    save({...library,recs:picks,recommendationSeed:selectedSeed,history:generatedBatch&&picks.length?cleanHistory([{...generatedBatch,picks},...(library.history||[])]):library.history});picks.forEach(remember);if(!picks.length)toast('No unseen streaming matches. Try Any year, another genre, or more services.');
+  }catch(e){if(accountState.epoch===accountEpoch){if(useAI)aiNotice=e.message;toast(e.message);}}finally{recommending=false;if(route.view==='foryou')renderForYou();}
 }
 function download(content,name,mime){const url=URL.createObjectURL(new Blob([content],{type:mime})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 
@@ -437,7 +448,7 @@ document.addEventListener('click',async event=>{
     if(a==='change-zip'){const panel=b.closest('[data-theater-scope]');panel.innerHTML=theaterPanelHTML(panel.dataset.theaterScope,true);panel.querySelector('input').focus();}
     else if(a==='detail')showRoute({view:'detail',key});else if(a==='actor')showRoute({view:'actor',id:Number(b.dataset.id)});
     else if(['home','watchlist','foryou','about'].includes(a))showRoute({view:a});else if(a==='back')goBack();
-    else if(['watch','seen','remove-seen','rate','dismiss'].includes(a))mutate(a,key,Number(b.dataset.stars));
+    else if(['watch','seen','remove-seen','rate','dismiss','more','less'].includes(a))mutate(a,key,Number(b.dataset.stars));
     else if(a==='service'){service=b.dataset.service;network='all';if(service==='theaters'){type='movie';kind='movie';}renderServices();loadCatalog();}
     else if(a==='type'){type=b.dataset.type;renderServices();loadCatalog();}
     else if(a==='clear-search')clearSearch();else if(a==='retry-search')search($('home-search-input').value.trim());
@@ -465,14 +476,16 @@ $('genre').innerHTML=browseGenres.map(g=>`<option value="${g.id}">${esc(g.label)
 $('genre').addEventListener('change',()=>{genre=$('genre').value;if(genre==='doc'&&kind==='movie')kind='doc';try{persistPreferences();}catch{toast('Could not save genre preference.');}renderServices();loadCatalog();});
 $('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&genre==='doc')genre='all';if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
-  try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));if(accountState.epoch!==accountEpoch)throw new Error('Account changed. Select the backup again for the intended account.');const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
+  const accountEpoch=accountState.epoch;
+  try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));if(accountState.epoch!==accountEpoch)throw new Error('Account changed. Select the backup again for the intended account.');const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},feedback:{...library.feedback,...imported.feedback},feedbackTitles:merge(library.feedbackTitles||[],imported.feedbackTitles||[]),services:library.services??imported.services,history:cleanHistory([...(library.history||[]),...(imported.history||[])]),dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
 });
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;});
 const updateNetworkStatus=()=>{$('offline').hidden=navigator.onLine;};window.addEventListener('online',updateNetworkStatus);window.addEventListener('offline',updateNetworkStatus);updateNetworkStatus();
 loadLibrary();similarSeed=library.recommendationSeed||null;renderServices();loadCatalog();if(initialRoute.view!=='home')showRoute(initialRoute,false);
 await importLegacy();
 mountAccounts({readGuest:()=>{const saved=readJSON('sr_library_v2',null);return saved?validLibrary(saved):migrateLegacy(readJSON('sr_wl',[]),readJSON('sr_seen',[]),readJSON('sr_ratings',{}));},validateLibrary:validLibrary,toast,setLibrary:next=>{
-  library=next;similarSeed=next.recommendationSeed||null;[...library.watchlist,...library.seen,...library.recs].forEach(remember);
+  if(renderedAccountEpoch!==accountState.epoch){historyId='';aiNotice='';renderedAccountEpoch=accountState.epoch;}
+  library=next;similarSeed=next.recommendationSeed||null;pickServices=accountState.user?(cleanServices(next.services)||[]):(cleanServices(readJSON('sr_preferences_v1',{}).services)||[]);[...library.watchlist,...library.seen,...library.recs].forEach(remember);
   if(route.view==='watchlist')renderWatchlist();else if(route.view==='foryou')renderForYou();else if(route.view==='detail')renderDetailActions();else if(route.view==='home'&&results.length)$('grid').innerHTML=visibleTitles(results).map(card).join('');
 }});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});

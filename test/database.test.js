@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 test('real PostgreSQL policies isolate two users and reject anonymous access and ownership changes',async()=>{
  const db=new PGlite();
  try{
-  await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);
+  await db.exec(`create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id) on delete cascade);
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     grant usage on schema auth,public to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;
     insert into auth.users values ('10000000-0000-4000-8000-0000000000a1'),('10000000-0000-4000-8000-0000000000b2');`);
@@ -45,5 +45,24 @@ test('real PostgreSQL policies isolate two users and reject anonymous access and
   await assert.rejects(db.exec('select * from public.library_entries'),/permission denied/);
   await assert.rejects(db.exec('select public.claim_ai_pick()'),/permission denied/);
   await assert.rejects(db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify(patch.map(x=>({...x,expected_user:a})))]),/permission denied/);
+  await assert.rejects(db.query('select public.delete_own_account($1,$2)',[a,'DELETE']),/permission denied/);
+  await assert.rejects(db.query('select public.sync_account_extras($1,$2::jsonb)',[a,'{}']),/permission denied/);
+  await asUser(a);
+  await db.query('select public.sync_account_extras($1,$2::jsonb)',[a,JSON.stringify({services:['netflix','max']})]);
+  await assert.rejects(db.query('select public.sync_account_extras($1,$2::jsonb)',[a,JSON.stringify({services:['arbitrary-provider']})]),/valid_services/);
+  for(let i=1;i<=22;i++)await db.query('select public.sync_account_extras($1,$2::jsonb)',[a,JSON.stringify({batches:[{id:'30000000-0000-4000-8000-'+String(i).padStart(12,'0'),createdAt:'2026-10-20T20:00:00Z',picks:[{id:i,type:'movie',title:'Private pick'}]}]})]);
+  assert.equal((await db.query('select count(*)::int as n from public.recommendation_history')).rows[0].n,20);
+  await asUser(b);assert.deepEqual((await db.query('select * from public.account_preferences')).rows,[]);assert.deepEqual((await db.query('select * from public.recommendation_history')).rows,[]);
+  await assert.rejects(db.query('select public.sync_account_extras($1,$2::jsonb)',[a,'{"services":[]}']),/Account changed/);
+  await assert.rejects(db.query('insert into public.account_preferences(user_id,services) values($1,$2)',[a,'[]']),/row.level security/);
+  await db.query('select public.sync_account_extras($1,$2::jsonb)',[b,'{"services":["apple"]}']);
+  await db.exec('reset role');await db.query('insert into auth.sessions values($1,$2)',['40000000-0000-4000-8000-000000000001',b]);
+  await asUser(b);await assert.rejects(db.query('select public.delete_own_account($1,$2)',[b,'delete']),/Type DELETE/);await assert.rejects(db.query('select public.delete_own_account($1,$2)',[a,'DELETE']),/Account changed/);
+  await db.query('select public.delete_own_account($1,$2)',[b,'DELETE']);
+  assert.deepEqual((await db.query('select * from public.account_preferences')).rows,[]);assert.deepEqual((await db.query('select * from public.library_entries')).rows,[]);
+  await assert.rejects(db.query('select public.sync_account_extras($1,$2::jsonb)',[b,'{"services":[]}']),/foreign key/);
+  await db.exec('reset role');assert.equal((await db.query('select count(*)::int as n from auth.sessions where user_id=$1',[b])).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int as n from auth.users where id=$1',[a])).rows[0].n,1);
+  await asUser(a);assert.deepEqual((await db.query('select services from public.account_preferences')).rows[0].services,['netflix','max']);
  }finally{await db.close();}
 });
