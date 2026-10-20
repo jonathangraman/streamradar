@@ -1,6 +1,6 @@
 import {createClient} from '@supabase/supabase-js';
 import {generateText,Output} from 'ai';
-import {createAnthropic} from '@ai-sdk/anthropic';
+import {createClaudeModel} from '../lib/claude-provider.js';
 import {z} from 'zod';
 import {aiPolicy} from '../lib/ai-policy.js';
 
@@ -21,7 +21,7 @@ export function makeHandler({policy=aiPolicy,now=()=>new Date(),clientFor=token=
   const response=await fetch('https://api.themoviedb.org/3/'+type+'/'+id+'?append_to_response=watch/providers',{headers:{Authorization:'Bearer '+process.env.TMDB_READ_TOKEN},signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw new Error('Catalog unavailable');
   return response.json();
-},authorizeUsage=()=>Boolean(process.env.ANTHROPIC_API_KEY?.trim()),modelFor=id=>createAnthropic({baseURL:'https://api.anthropic.com/v1',apiKey:process.env.ANTHROPIC_API_KEY?.trim()})(id)}={}){
+},authorizeUsage=()=>Boolean(process.env.ANTHROPIC_API_KEY?.trim()),modelFor=createClaudeModel}={}){
  return async function handler(req,res){
   res.setHeader('Cache-Control','private, no-store');
   if(req.method==='GET')return res.status(200).json({provider:'Claude',configured:Boolean(process.env.ANTHROPIC_API_KEY),enabled:Boolean(process.env.ANTHROPIC_API_KEY)&&policy.enabled===true});
