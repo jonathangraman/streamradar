@@ -41,9 +41,14 @@ export function contentLabels(item, now=today()) {
   if((item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(99))labels.push({kind:'doc',text:'DOC'});
   // Series-level offers cannot establish which seasons or episodes a service carries.
   if(item.catalogService && item.catalogService!=='all' && !isOriginalSeries(item,item.catalogService))return labels;
-  const cutoff=new Date(now+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-90);
-  const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=cutoff.toISOString().slice(0,10)).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
-  if(season&&!releaseMilestone(item,now))labels.push({kind:'season',text:'SEASON PREMIERE',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
+  const premiereCutoff=shiftedDate(now,-6);
+  const season=(item.seasons||[]).filter(s=>s.season_number>1&&s.air_date&&s.air_date<=now&&s.air_date>=premiereCutoff).sort((a,b)=>b.air_date.localeCompare(a.air_date))[0];
+  const lastEpisode=item.last_episode_to_air;
+  const secondEpisodeAired=season && (
+    (lastEpisode?.season_number===season.season_number && lastEpisode.episode_number>=2 && lastEpisode.air_date<=now) ||
+    (item.releaseSeasonEpisodes||[]).some(e=>e.episode_number>=2&&e.air_date&&e.air_date<=now&&lastEpisode?.season_number===season.season_number)
+  );
+  if(season&&!secondEpisodeAired&&!releaseMilestone(item,now))labels.push({kind:'season',text:'SEASON PREMIERE',description:`Season ${season.season_number} premiered ${formatDate(season.air_date)}; streaming availability may vary.`});
   const episode=item.last_episode_to_air, week=new Date(now+'T12:00:00Z');week.setUTCDate(week.getUTCDate()-7);
   const weekday=date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'}).toUpperCase()+' '+Number(date.slice(5,7))+'/'+Number(date.slice(8,10));
   const next=item.next_episode_to_air;
