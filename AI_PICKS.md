@@ -47,3 +47,11 @@ limits, owner isolation and sync behavior. No live model credits are spent by te
 Mobile (390px) and desktop layouts were checked in the browser.
 
 The complete existing suite has three pre-existing season-badge failures. Live production activation and verification are performed after deployment.
+
+Identity-linked Claude keys require an anthropic-workspace-id header. An explicit
+ANTHROPIC_WORKSPACE_ID takes precedence. On the specific pre-generation missing-
+workspace 400 response, the provider reads the workspace list with include_default
+and retries once with the unique active Default workspace. It never chooses another
+workspace, changes permissions, logs workspace contents, or retries an ambiguous
+inference. Workspace-scoped keys continue without discovery. Transport tests use
+mock HTTP responses and spend no credits.
