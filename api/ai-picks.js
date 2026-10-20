@@ -21,7 +21,7 @@ export function makeHandler({policy=aiPolicy,now=()=>new Date(),clientFor=token=
   const response=await fetch('https://api.themoviedb.org/3/'+type+'/'+id+'?append_to_response=watch/providers',{headers:{Authorization:'Bearer '+process.env.TMDB_READ_TOKEN},signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw new Error('Catalog unavailable');
   return response.json();
-},authorizeUsage=()=>Boolean(process.env.ANTHROPIC_API_KEY),modelFor=id=>createAnthropic({baseURL:'https://api.anthropic.com/v1'})(id)}={}){
+},authorizeUsage=()=>Boolean(process.env.ANTHROPIC_API_KEY?.trim()),modelFor=id=>createAnthropic({baseURL:'https://api.anthropic.com/v1',apiKey:process.env.ANTHROPIC_API_KEY?.trim()})(id)}={}){
  return async function handler(req,res){
   res.setHeader('Cache-Control','private, no-store');
   if(req.method==='GET')return res.status(200).json({provider:'Claude',configured:Boolean(process.env.ANTHROPIC_API_KEY),enabled:Boolean(process.env.ANTHROPIC_API_KEY)&&policy.enabled===true});
@@ -67,7 +67,8 @@ export function makeHandler({policy=aiPolicy,now=()=>new Date(),clientFor=token=
    const status=error?.statusCode||error?.cause?.statusCode;
    const message=String(error?.message||'').toLowerCase();
    const category=['credit','api key','permission','model','schema','thinking'].find(word=>message.includes(word))||'other';
-   console.error('AI picks failed',JSON.stringify({name:error?.name,status,category,finishReason:error?.finishReason}));
+   const diagnosticTerms=message.match(/\b(?:invalid|valid|api|key|not|enabled|access|model|available|supported|authentication|header|permission|organization|workspace|credit|balance|billing|low|paid|free|request|schema|thinking|json|format|output|must|missing|account|disabled|limit|exceeded|expired|provisioned|authorized|forbidden|restricted)\b/g)?.slice(0,35);
+   console.error('AI picks failed',JSON.stringify({name:error?.name,status,category,diagnosticTerms,finishReason:error?.finishReason}));
    return res.status(503).json({error:status===401?'Claude rejected the saved API key. Regular picks are shown below.':category==='credit'?'Claude API credit balance is unavailable. Regular picks are shown below.':'AI picks are unavailable right now. Regular picks are shown below.'});
   }
  };
