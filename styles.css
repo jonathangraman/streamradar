@@ -309,10 +309,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 #browse-controls .filter-row label{font-size:9px;gap:2px;flex-basis:58px}
 #browse-controls .filter-row select{min-height:28px;padding:4px 6px;font-size:10px}
 
-/* Compact theater ZIP entry without shrinking mobile tap targets. */
-.theater-info .zip-form{margin:4px 0 0;max-width:290px}
-.theater-info .zip-form label{font-size:11px;margin:4px 0}
+/* ZIP location belongs to the movie scroll area, above the release grid. */
+.theater-info{position:static;margin:4px 0 12px;padding:8px 10px;border-radius:8px;max-width:440px}
+.theater-info .zip-form,.theater-info .zip-saved{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0}
+.theater-info .zip-form label{font-size:12px;margin:0}
 .theater-info .zip-controls{gap:6px;flex-wrap:nowrap;align-items:center}
-.theater-info .zip-controls input{width:118px;min-width:0;min-height:40px;padding:7px 9px;font-size:16px}
-.theater-info .zip-controls button{min-height:40px;padding:7px 10px;font-size:12px;white-space:nowrap}
-.theater-info .zip-form+small{font-size:10px;margin-top:4px}
+.theater-info .zip-controls input{width:76px;min-width:0;height:36px;min-height:36px;padding:6px 8px;font-size:16px;border-radius:6px}
+.theater-info .zip-controls button,.theater-info .text-button,.theater-info .showtime-link{box-sizing:border-box;min-height:36px;margin:0;padding:8px 10px;font-size:12px;line-height:18px;border-radius:6px;white-space:nowrap}
+.theater-info small{font-size:10px;margin-top:3px;line-height:1.4}

@@ -268,6 +268,10 @@ history.replaceState({...initialRoute,depth:0},'','#'+initialRoute.view+(initial
 
 function theaterPanelHTML(scope,editing=false){
   const form=!theaterZip||editing;
+  if(scope==='home')return (form?
+    '<form class="zip-form" data-zip-form="home"><label for="home-zip">ZIP code</label><div class="zip-controls"><input id="home-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="12345" aria-describedby="home-zip-help" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save</button></div></form>':
+    '<div class="zip-saved"><span>ZIP <strong>'+theaterZip+'</strong></span><button class="text-button" data-action="change-zip">Change</button><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Showtimes ↗</a></div>')+
+    '<small id="home-zip-help">'+(form?'Five-digit US ZIP · saved on this browser. ':'')+'US releases below; local showtimes on Fandango.</small>';
   return '<h2>Find theaters near you</h2>'+ (form?
     '<form class="zip-form" data-zip-form="'+scope+'"><label for="'+scope+'-zip">US ZIP code</label><div class="zip-controls"><input id="'+scope+'-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="Enter ZIP code" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save ZIP</button></div></form><small>Enter five digits. Saved on this browser.</small>':
     '<p>Theaters near <strong>'+theaterZip+'</strong> <button class="text-button" data-action="change-zip">Change ZIP</button></p><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Find nearby theaters & showtimes ↗</a>')+
