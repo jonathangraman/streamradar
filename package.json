@@ -11,6 +11,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.84",
     "@supabase/supabase-js": "2.118.0",
     "ai": "7.0.147",
     "zod": "4.6.7"

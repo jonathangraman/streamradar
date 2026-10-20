@@ -16,20 +16,28 @@ Account changes discard in-flight results. Pending library edits must sync first
 
 ## Free-credit rollout
 
-`lib/ai-policy.js` is deliberately disabled (`verifiedFreeMonth: null`). Before
-setting the current UTC month, verify the team's FREE credit grant is active,
-no paid balance or BYOK credentials are present, and auto top-up is OFF. Renew
-that verification each month. The gateway balance endpoint reports a combined
-balance, so code cannot independently distinguish promotional and paid dollars.
-Never enable this policy against an account that mixes them. Adding an Anthropic
-API key alone does not establish a free-credit guarantee; that path is not enabled.
+The owner saved `ANTHROPIC_API_KEY` as a Vercel Secret for Production. The
+server uses `@ai-sdk/anthropic` directly against Anthropic's official endpoint;
+no AI Gateway account, key, credit balance or fallback is used. Add the same
+secret to Preview privately if an authenticated preview generation is needed.
+The key is read only on the server and is never returned by the status endpoint.
 
-No keys or billing settings are created/changed by this feature. Deployed Vercel
-functions use project OIDC with AI Gateway. The model was selected from the live
-2026-10-20 gateway catalog for structured output and low cost. Recheck pricing and
-free-tier eligibility before activation. No tools, paid fallback models, automatic
-retries, or credit purchases are configured. A balance check reserves $0.05;
-requests fail closed if verification, credit lookup or provider calls fail.
+`lib/ai-policy.js` remains deliberately disabled (`verifiedFreeMonth: null`).
+Before setting the current UTC month, verify the Anthropic organization's FREE
+credit grant, expiry, no paid balance/fallback, and automatic reloading OFF. A
+normal Anthropic API key does not provide a documented promotional-balance
+check, and possession of a working key does not establish a free-only guarantee.
+Do not activate an organization mixing paid and promotional balances. Renew
+billing verification each month; the guard expires closed. Other applications
+using the same organization can consume its credits, so an isolated organization
+with only promotional credits and no paid fallback is the safe activation target.
+
+No billing settings are changed by this feature. Claude Haiku 5.5's exact API ID,
+`claude-haiku-5-5`, was verified in the official 2026-10-20 Anthropic model docs
+and the installed SDK. Recheck pricing before activation. Output is bounded to
+1,400 tokens, thinking disabled, with no tools, retries or paid fallback models.
+GET /api/ai-picks exposes only provider/configured/enabled booleans for zero-cost
+deployment checks; it never authenticates to Anthropic or spends credits.
 
 Apply `20261020192014_private_ai_picks_limits.sql` before enabling AI. Atomic
 PostgreSQL limits allow 5 attempts per user per UTC day, a 30-second cooldown,
@@ -42,7 +50,7 @@ is an invoker wrapper around a private function that checks `auth.uid()`.
 
 `node --test test/ai-picks.test.js test/database.test.js test/library-sync.test.js`
 checks authentication, per-owner history, no identity in model prompts, invalid
-input/output, insufficient history/credits, safe failures, real PostgreSQL quota
+input/output, insufficient history/configuration, safe failures, real PostgreSQL quota
 limits, owner isolation and sync behavior. No live model credits are spent by tests.
 `npm run build` builds public assets without server code or AI credentials.
 Mobile (390px) and desktop layouts were checked in the browser.
