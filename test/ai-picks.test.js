@@ -6,7 +6,7 @@ const history=[1,2,3].map(id=>({media_type:'movie',tmdb_id:id,item:{title:'Saved
 function fixture(overrides={}){
  const calls={generate:0,quota:0,authorization:0};
  const client={auth:{getUser:async()=>({data:{user:{id:'viewer-A'}}})},from:()=>({select:()=>({eq:(field,id)=>{assert.equal(field,'user_id');assert.equal(id,'viewer-A');return {order:()=>({limit:async()=>({data:history})})};}})}),rpc:async()=>{calls.quota++;return {data:true};}};
- const handler=makeHandler({policy:{verifiedFreeMonth:'2026-10',model:'test/model'},now:()=>new Date('2026-10-20'),clientFor:()=>client,authorizeUsage:async()=>{calls.authorization++;return true;},catalog:async()=>({title:'Candidate',release_date:'2020-01-01',original_language:'en',genres:[],overview:'A mystery', 'watch/providers':{results:{US:{flatrate:[{provider_name:'Netflix'}]}}}}),generate:async options=>{calls.generate++;const prompt=JSON.parse(options.prompt);assert.equal(prompt.history.length,3);assert(!options.prompt.includes('viewer-A'));assert.equal(options.maxRetries,0);assert.equal(options.model.provider,'anthropic.messages');assert.equal(options.providerOptions.anthropic.thinking.type,'disabled');return {output:{picks:[{key:'movie:4',reason:'Because you rated Saved 3 highly.'}]}};},...overrides});
+ const handler=makeHandler({policy:{enabled:true,model:'test/model'},now:()=>new Date('2026-10-20'),clientFor:()=>client,authorizeUsage:async()=>{calls.authorization++;return true;},catalog:async()=>({title:'Candidate',release_date:'2020-01-01',original_language:'en',genres:[],overview:'A mystery', 'watch/providers':{results:{US:{flatrate:[{provider_name:'Netflix'}]}}}}),generate:async options=>{calls.generate++;const prompt=JSON.parse(options.prompt);assert.equal(prompt.history.length,3);assert(!options.prompt.includes('viewer-A'));assert.equal(options.maxRetries,0);assert.equal(options.model.provider,'anthropic.messages');assert.equal(options.providerOptions.anthropic.thinking.type,'disabled');return {output:{picks:[{key:'movie:4',reason:'Because you rated Saved 3 highly.'}]}};},...overrides});
  const run=async (body={candidates:['movie:4']},authorization='Bearer valid')=>{
   const res={headers:{},setHeader(k,v){this.headers[k]=v;},status(n){this.code=n;return this;},json(body){this.body=body;return this;}};
   await handler({method:'POST',headers:{authorization},body},res);return res;
@@ -18,8 +18,8 @@ test('AI uses authenticated owner history and validated catalog keys, with no id
 test('missing or invalid login never calls AI',async()=>{
  const f=fixture();assert.equal((await f.run(undefined,'')).code,401);f.client.auth.getUser=async()=>({error:new Error('expired')});assert.equal((await f.run()).code,401);assert.equal(f.calls.generate,0);
 });
-test('free-credit verification expires closed; no quota or AI request',async()=>{
- const f=fixture({policy:{verifiedFreeMonth:null}});assert.equal((await f.run()).code,503);assert.equal(f.calls.authorization,0);assert.equal(f.calls.quota,0);assert.equal(f.calls.generate,0);
+test('disabled feature never claims quota or calls AI',async()=>{
+ const f=fixture({policy:{enabled:false}});assert.equal((await f.run()).code,503);assert.equal(f.calls.authorization,0);assert.equal(f.calls.quota,0);assert.equal(f.calls.generate,0);
 });
 test('missing key, quota failure and unavailable provider fail safely',async()=>{
  for(const authorizeUsage of [async()=>false,async()=>{throw Error('not configured');}]){
@@ -47,7 +47,7 @@ test('status verifies configuration without exposing a secret or calling any pro
  const saved=process.env.ANTHROPIC_API_KEY;
  try{
   process.env.ANTHROPIC_API_KEY='test-secret-never-return';
-  const handler=makeHandler({policy:{verifiedFreeMonth:null},clientFor:()=>{throw Error('Must not authenticate');},generate:()=>{throw Error('Must not spend');}});
+  const handler=makeHandler({policy:{enabled:false},clientFor:()=>{throw Error('Must not authenticate');},generate:()=>{throw Error('Must not spend');}});
   const res={setHeader(){},status(n){this.code=n;return this;},json(value){this.body=value;return this;}};
   await handler({method:'GET'},res);
   assert.equal(res.code,200);assert.deepEqual(res.body,{provider:'Claude',configured:true,enabled:false});assert(!JSON.stringify(res.body).includes('test-secret'));

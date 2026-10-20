@@ -24,14 +24,14 @@ export function makeHandler({policy=aiPolicy,now=()=>new Date(),clientFor=token=
 },authorizeUsage=()=>Boolean(process.env.ANTHROPIC_API_KEY),modelFor=id=>createAnthropic({baseURL:'https://api.anthropic.com/v1'})(id)}={}){
  return async function handler(req,res){
   res.setHeader('Cache-Control','private, no-store');
-  if(req.method==='GET')return res.status(200).json({provider:'Claude',configured:Boolean(process.env.ANTHROPIC_API_KEY),enabled:Boolean(process.env.ANTHROPIC_API_KEY)&&policy.verifiedFreeMonth===now().toISOString().slice(0,7)});
+  if(req.method==='GET')return res.status(200).json({provider:'Claude',configured:Boolean(process.env.ANTHROPIC_API_KEY),enabled:Boolean(process.env.ANTHROPIC_API_KEY)&&policy.enabled===true});
   if(req.method!=='POST'){res.setHeader('Allow','GET, POST');return res.status(405).json({error:'Method not allowed'});}
   const token=/^Bearer (\S{1,8192})$/.exec(req.headers.authorization||'')?.[1];
   if(!token)return res.status(401).json({error:'Sign in to use AI picks.'});
   try{
    const client=clientFor(token),{data:auth,error:authError}=await client.auth.getUser(token);
    if(authError||!auth?.user)return res.status(401).json({error:'Please sign in again.'});
-   if(policy.verifiedFreeMonth!==now().toISOString().slice(0,7))return res.status(503).json({error:'AI picks are waiting for free-credit confirmation. Regular picks are shown below.'});
+   if(policy.enabled!==true)return res.status(503).json({error:'AI picks are currently turned off. Regular picks are shown below.'});
    let body=req.body;
    if(Buffer.byteLength(typeof body==='string'?body:JSON.stringify(body??{}))>4096)return res.status(413).json({error:'Request is too large.'});
    if(typeof body==='string'){try{body=JSON.parse(body);}catch{return res.status(400).json({error:'Invalid request.'});}}
@@ -53,9 +53,8 @@ export function makeHandler({policy=aiPolicy,now=()=>new Date(),clientFor=token=
     }));candidates.push(...batch.filter(Boolean));
    }
    if(!candidates.length)return res.status(422).json({error:'No streaming candidates match. Try different filters.'});
-   // Anthropic does not expose a documented free-balance check for normal API
-   // keys. Never treat a working key as proof that promotional credits exist.
-   if(!(await authorizeUsage()))return res.status(503).json({error:'Free AI credits are unavailable. Regular picks are shown below.'});
+   // Only the server uses the API credential; database quotas bound attempts.
+   if(!(await authorizeUsage()))return res.status(503).json({error:'Claude is not configured. Regular picks are shown below.'});
    const {data:claimed,error:claimError}=await client.rpc('claim_ai_pick');
    if(claimError)throw claimError;
    if(claimed!==true)return res.status(429).json({error:'AI refresh limit reached. Try later; regular picks are still available.'});
