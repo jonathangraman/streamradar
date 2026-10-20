@@ -1,6 +1,7 @@
 import {matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 import {mountAccounts,accountState} from './accounts.js';
+import {client as accountClient} from './auth-client.js';
 import {recommendationSeeds,tasteProfile} from './core.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
@@ -340,7 +341,7 @@ function renderWatchlist(){
 }
 function renderForYou(){
   const seeds=recommendationSeeds(library);
-  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Picks based on your ratings and watchlist. Ratings carry more weight; low ratings reduce similar genres.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices are saved with your library.</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
+  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><div class="pick-actions"><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button> <button class="gen-btn ai-picks-button" data-action="ai-recommend"${recommending||!accountState.user?' disabled':''}>Get AI picks</button></div><p class="data-note">${accountState.user?'Optional AI: sends a limited selection of your saved titles and ratings to an AI provider. Your email is not sent. Optional; regular picks are always available.':'Sign in to try optional AI picks based on your private library.'}</p><p class="data-note" role="status">${esc(aiNotice)}</p><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Picks based on your ratings and watchlist. Ratings carry more weight; low ratings reduce similar genres.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices are saved with your library.</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
     const saved=library.watchlist.some(x=>keyOf(x)===keyOf(item));
     return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
   }).join('');
@@ -351,9 +352,11 @@ function renderForYou(){
   $('pick-media').addEventListener('change',e=>{pickMedia=e.target.value;if(pickMedia==='tv'&&pickGenre==='indie'){pickGenre='all';$('pick-genre').value='all';}});
   $('pick-genre').addEventListener('change',e=>{pickGenre=e.target.value;if(pickGenre==='indie'){pickMedia='movie';$('pick-media').value='movie';}});
 }
-let recommending=false;
-async function recommend(){
-  if(recommending)return;recommending=true;
+let recommending=false,aiNotice='';
+async function recommend(useAI=false){
+  if(recommending)return;
+  if(useAI&&!accountState.user){toast('Sign in to use AI picks.');return;}
+  recommending=true;aiNotice=useAI?'Finding titles for AI to compare…':'';
   const chosenMedia=pickMedia,chosenGenre=pickGenre,chosenYear=pickYear,chosenServices=[...pickServices],selectedSeed=similarSeed,accountEpoch=accountState.epoch,sourceLibrary=structuredClone(library);
   try{persistPreferences();}catch{toast('Preferences could not be saved; using them for these picks.');}renderForYou();
   try{
@@ -393,8 +396,35 @@ async function recommend(){
       return {...full,reason:item.reason+'. Included with '+[...new Set(offers.map(p=>p.provider_name))].join(', ')+'.'};
     });
     if(checked.length&&checked.every(x=>x?._error))throw new Error('Could not check streaming availability. Please retry.');
-    const picks=checked.filter(x=>x&&!x._error&&!(library.dismissed||[]).includes(keyOf(x))&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))).slice(0,12);
+    let picks=checked.filter(x=>x&&!x._error&&!(library.dismissed||[]).includes(keyOf(x))&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))).slice(0,12);
     if(accountState.epoch!==accountEpoch)return;
+    if(useAI&&picks.length){
+      try{
+        const cloud=accountState.cloud;
+        await cloud?.sync();
+        if(accountState.epoch!==accountEpoch)return;
+        if(!cloud?.ready||Object.keys(cloud.pending).length)throw new Error('Sync your saved titles first, then try AI picks again.');
+        const {data:{session}}=await accountClient.auth.getSession();
+        if(!session)throw new Error('Sign in to use AI picks.');
+        const pool=checked.filter(x=>x&&!x._error&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))&&!(library.dismissed||[]).includes(keyOf(x))).slice(0,24);
+        aiNotice='AI is comparing titles with your ratings and watchlist…';if(route.view==='foryou')renderForYou();
+        const response=await fetch('/api/ai-picks',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({candidates:pool.map(keyOf)}),signal:AbortSignal.timeout(85000)});
+        const result=await response.json();
+        if(accountState.epoch!==accountEpoch)return;
+        if(!response.ok)throw new Error(result.error||'AI picks are unavailable.');
+        const allowed=new Map(pool.map(x=>[keyOf(x),x])),used=new Set();
+        if(!Array.isArray(result.picks)||!result.picks.length||result.picks.length>12)throw new Error('AI returned an invalid selection.');
+        const aiPicks=result.picks.map(p=>{
+          if(!allowed.has(p.key)||used.has(p.key)||typeof p.reason!=='string'||p.reason.length>240)throw new Error('AI returned an invalid selection.');
+          used.add(p.key);const item=allowed.get(p.key);
+          const availability=item.reason.match(/Included with .*$/)?.[0]||'';
+          return {...item,reason:'AI pick: '+p.reason+' '+availability};
+        });
+        picks=aiPicks;aiNotice='AI picks based on your saved titles and ratings. Regular Refresh picks is always available.';
+      }catch(e){if(accountState.epoch!==accountEpoch)return;aiNotice=(e.name==='TimeoutError'?'AI took too long.':e.message)+' Showing regular picks.';}
+    }
+    if(accountState.epoch!==accountEpoch)return;
+    picks=picks.filter(x=>!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))&&!(library.dismissed||[]).includes(keyOf(x)));
     save({...library,recs:picks,recommendationSeed:selectedSeed});picks.forEach(remember);if(!picks.length)toast('No unseen streaming matches. Try Any year, another genre, or more services.');
   }catch(e){toast(e.message);}finally{recommending=false;if(route.view==='foryou')renderForYou();}
 }
@@ -414,7 +444,7 @@ document.addEventListener('click',async event=>{
     else if(a==='retry-catalog')loadCatalog();else if(a==='more'&&!loading)loadCatalog(true);
     else if(a==='retry-detail')loadDetail(route.key);else if(a==='retry-actor')loadActor(route.id);
     else if(a==='retry-offers')loadOffers(detailItem,detailSequence.value());else if(a==='retry-scores')loadScores(detailItem,detailSequence.value());
-    else if(a==='wl-tab'){wlTab=b.dataset.tab;renderWatchlist();}else if(a==='recommend')await recommend();
+    else if(a==='wl-tab'){wlTab=b.dataset.tab;renderWatchlist();}else if(a==='recommend')await recommend();else if(a==='ai-recommend')await recommend(true);
     else if(a==='similar'){if(recommending)return;similarSeed=items.get(key);if(!similarSeed)return;pickMedia=similarSeed.type;pickGenre='all';pickYear='all';save({...library,recs:[],recommendationSeed:similarSeed});showRoute({view:'foryou'});await recommend();}
     else if(a==='clear-similar'){if(recommending)return;similarSeed=null;save({...library,recs:[],recommendationSeed:null});await recommend();}
     else if(a==='calendar'){const item=items.get(key);download(calendarEvent(item,item.next_episode_to_air?.air_date||item.date),'streamradar-event.ics','text/calendar');toast('Open the calendar file to add your reminder.');}
