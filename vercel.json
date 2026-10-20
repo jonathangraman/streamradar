@@ -1,6 +1,7 @@
 {
   "buildCommand":"npm run build",
   "outputDirectory":"public",
+  "functions":{"api/ai-picks.js":{"maxDuration":90}},
   "headers":[
     {"source":"/(.*)","headers":[
       {"key":"X-Content-Type-Options","value":"nosniff"},
