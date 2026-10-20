@@ -274,7 +274,22 @@ export function withVerifiedUSOffers(item,offers={},now=today()){
 export function matchesPickYear(item,year='all'){
  return year==='all'||String(item.date||item.release_date||item.first_air_date||'').slice(0,4)===String(year);
 }
-export function rankRecommendations(candidates,seeds=[],prior=new Set()){
+export function recommendationSeeds(library,media='all'){
+ const unique=[...new Map([...library.seen,...library.watchlist].map(x=>[keyOf(x),x])).values()].filter(x=>media==='all'||x.type===media);
+ const rated=unique.filter(x=>library.ratings[keyOf(x)]>=4).sort((a,b)=>library.ratings[keyOf(b)]-library.ratings[keyOf(a)]).slice(0,4);
+ const interested=library.watchlist.slice().reverse().filter(x=>(media==='all'||x.type===media)&&!library.ratings[keyOf(x)]&&!(library.dismissed||[]).includes(keyOf(x))).slice(0,2);
+ return [...new Map([...rated,...interested].map(x=>[keyOf(x),{...x,seedWeight:library.ratings[keyOf(x)]===5?5:library.ratings[keyOf(x)]===4?3:1.5,seedReason:library.ratings[keyOf(x)]>=4?'rated':'watchlist'}])).values()];
+}
+export function tasteProfile(library){
+ const weights={};
+ for(const item of new Map([...library.watchlist,...library.seen].map(x=>[keyOf(x),x])).values()){
+  const rating=library.ratings[keyOf(item)],dismissed=(library.dismissed||[]).includes(keyOf(item));
+  const weight=dismissed?-2:rating===5?3:rating===4?2:rating<=2?-3:!rating&&library.watchlist.some(x=>keyOf(x)===keyOf(item))?0.75:0;
+  for(const genre of item.genre_ids||item.genres?.map(g=>g.id)||[]){const key=item.type+':'+genre;weights[key]=(weights[key]||0)+weight;}
+ }
+ return weights;
+}
+export function rankRecommendations(candidates,seeds=[],prior=new Set(),profile={}){
  const genres=item=>item.genre_ids||item.genres?.map(g=>g.id)||[];
  const grouped=new Map();
  for(const item of candidates){
@@ -283,7 +298,7 @@ export function rankRecommendations(candidates,seeds=[],prior=new Set()){
   if(existing){existing.affinity+=item.affinity||0;if(!existing.relatedTo&&item.relatedTo){existing.reason=item.reason;existing.relatedTo=item.relatedTo;}}
   else grouped.set(key,{...item,affinity:item.affinity||0});
  }
- const score=item=>item.affinity*10+(item.affinity?Math.max(0,...seeds.filter(s=>s.type===item.type).map(s=>genres(s).filter(g=>genres(item).includes(g)).length)):0);
+ const score=item=>item.affinity*10+Math.max(-12,Math.min(12,genres(item).reduce((sum,g)=>sum+(profile[item.type+':'+g]||0),0)))+(item.affinity?Math.max(0,...seeds.filter(s=>s.type===item.type).map(s=>genres(s).filter(g=>genres(item).includes(g)).length)):0);
  return [...grouped.values()].sort((a,b)=>score(b)-score(a)||Number(prior.has(keyOf(a)))-Number(prior.has(keyOf(b)))||(b.vote_average||0)-(a.vote_average||0));
 }
 

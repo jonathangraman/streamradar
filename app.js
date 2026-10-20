@@ -1,5 +1,7 @@
 import {matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
+import {mountAccounts,accountState} from './accounts.js';
+import {recommendationSeeds,tasteProfile} from './core.js';
 
 const $=id=>document.getElementById(id), IMG='https://image.tmdb.org/t/p/';
 let library=emptyLibrary(),type='movie',service='all',kind='all',genre='all',when='now',network='all',page=1,totalPages=1,catalog=[],results=[],searchTimer,searchController,wlTab='watchlist',detailItem=null,installPrompt;
@@ -42,10 +44,11 @@ function readJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key)|
 function validLibrary(data){
   if(!data||data.version!==2||!Array.isArray(data.watchlist)||!Array.isArray(data.seen)||!Array.isArray(data.recs)||!data.ratings||typeof data.ratings!=='object')throw new Error('This is not a StreamRadar backup.');
   const out=migrateLegacy(data.watchlist,data.seen,data.ratings);
+  for(const [key,value] of Object.entries(data.ratings))if(/^(movie|tv):[1-9]\d*$/.test(key)&&Number.isInteger(value)&&value>=1&&value<=5)out.ratings[key]=value;
   out.dismissed=Array.isArray(data.dismissed)?[...new Set(data.dismissed.filter(k=>/^(movie|tv):[1-9]\d*$/.test(k)))]:[];
   out.recs=data.recs.map(x=>normalize(x)).filter(Boolean).filter(x=>!out.dismissed.includes(keyOf(x)));out.legacyImported=!!data.legacyImported;out.recommendationSeed=data.recommendationSeed?normalize(data.recommendationSeed):null;return out;
 }
-function save(next){try{library=commitLibrary(localStorage,next);}catch{throw new Error('Could not save on this browser. Free some storage or export your library.');}}
+function save(next){try{if(accountState.user){accountState.cloud.save(next);library=next;}else library=commitLibrary(localStorage,next);}catch(error){throw new Error(error.message||'Could not save on this browser. Free some storage or export your library.');}}
 function loadLibrary(){
   const saved=readJSON('sr_library_v2',null);
   try{library=saved?validLibrary(saved):migrateLegacy(readJSON('sr_wl',[]),readJSON('sr_seen',[]),readJSON('sr_ratings',{}));}catch{library=emptyLibrary();toast('Could not read your library. Your original data has not been deleted.');}
@@ -72,7 +75,7 @@ async function importLegacy(){
     if(route.view==='watchlist')renderWatchlist();
   }catch{$('storage-status').textContent='Old cloud records could not be imported. They have not been deleted. New changes are saved on this browser.';$('legacy-retry').hidden=false;}
 }
-function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(action==='dismiss'?'Not interested saved. This title will not be suggested again on this browser.':action==='watch'?'Watchlist saved on this browser.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
+function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(action==='dismiss'?'Not interested saved.':action==='watch'?'Watchlist updated.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
 
 function renderServices(){
   $('network-filter').hidden=service!=='max'||when==='soon';
@@ -336,8 +339,8 @@ function renderWatchlist(){
   $('wl-grid').innerHTML=[...library[wlTab]].sort(newestFirst).map(item=>`<div class="wl-card-wrap">${card(item)}${ratingControl(item)}<button class="text-button" data-action="${wlTab==='seen'?'remove-seen':'seen'}" data-key="${keyOf(item)}">${wlTab==='seen'?'Remove from Seen It':'Mark as seen'}</button></div>`).join('')||'<div class="empty">No titles here yet. Search for a title to get started.</div>';
 }
 function renderForYou(){
-  const seeds=[...library.seen,...library.watchlist].filter(x=>library.ratings[keyOf(x)]>=4);
-  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Related to your 4–5-star ratings, with matching streaming discoveries.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices stay saved on this browser.</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
+  const seeds=recommendationSeeds(library);
+  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Picks based on your ratings and watchlist. Ratings carry more weight; low ratings reduce similar genres.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices are saved with your library.</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
     const saved=library.watchlist.some(x=>keyOf(x)===keyOf(item));
     return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
   }).join('');
@@ -351,17 +354,18 @@ function renderForYou(){
 let recommending=false;
 async function recommend(){
   if(recommending)return;recommending=true;
-  const chosenMedia=pickMedia,chosenGenre=pickGenre,chosenYear=pickYear,chosenServices=[...pickServices],selectedSeed=similarSeed;
+  const chosenMedia=pickMedia,chosenGenre=pickGenre,chosenYear=pickYear,chosenServices=[...pickServices],selectedSeed=similarSeed,accountEpoch=accountState.epoch,sourceLibrary=structuredClone(library);
   try{persistPreferences();}catch{toast('Preferences could not be saved; using them for these picks.');}renderForYou();
   try{
-    const seeds=selectedSeed?[selectedSeed]:[...library.seen,...library.watchlist].reverse().filter(x=>library.ratings[keyOf(x)]>=4&&(chosenMedia==='all'||x.type===chosenMedia)).sort((a,b)=>library.ratings[keyOf(b)]-library.ratings[keyOf(a)]).slice(0,5);
+    const seeds=selectedSeed?[selectedSeed]:recommendationSeeds(sourceLibrary,chosenMedia);
     const excluded=new Set([...library.watchlist,...library.seen,...seeds].map(keyOf).concat(library.dismissed||[]));
     const requests=seeds.flatMap(seed=>['recommendations','similar'].map(endpoint=>({seed,endpoint})));
     const batches=await mapLimit(requests,3,async({seed,endpoint})=>{
       const d=await api('/'+seed.type+'/'+seed.id+'/'+endpoint);
-      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,seed.type),relatedTo:keyOf(seed),affinity:endpoint==='recommendations'?4:2,reason:(selectedSeed?'Similar to ':'Because you liked ')+seed.title}));
+      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,seed.type),relatedTo:keyOf(seed),affinity:(endpoint==='recommendations'?4:2)*(seed.seedWeight||3)/3,reason:selectedSeed?'Similar to '+seed.title:seed.seedReason==='watchlist'?'Because '+seed.title+' is on your watchlist':'Because you rated '+seed.title+' '+sourceLibrary.ratings[keyOf(seed)]+'/5'}));
     });
     const related=batches.filter(Array.isArray).flat();
+    if(accountState.epoch!==accountEpoch)return;
     // Explicit similarity never falls back to unrelated popular discoveries.
     const types=selectedSeed?[]:chosenMedia==='all'?['movie','tv']:[chosenMedia];
     const discoveries=await mapLimit(types,2,async media=>{
@@ -378,8 +382,9 @@ async function recommend(){
     });
     if([...batches,...discoveries].length&&[...batches,...discoveries].every(x=>x._error))throw new Error('Picks are temporarily unavailable. Please retry.');
     const prior=new Set(library.recs.map(keyOf));
-    let candidates=rankRecommendations([...related,...discoveries.filter(Array.isArray).flat()],seeds,prior).filter(x=>!excluded.has(keyOf(x))&&isEnglish(x)&&matchesPickYear(x,chosenYear)&&(chosenMedia==='all'||x.type===chosenMedia)&&x.date&&x.date<=today());
+    let candidates=rankRecommendations([...related,...discoveries.filter(Array.isArray).flat()],seeds,prior,selectedSeed?{}:tasteProfile(sourceLibrary)).filter(x=>!excluded.has(keyOf(x))&&isEnglish(x)&&matchesPickYear(x,chosenYear)&&(chosenMedia==='all'||x.type===chosenMedia)&&x.date&&x.date<=today());
     const checked=await mapLimit(candidates.slice(0,70),4,async item=>{
+      if(accountState.epoch!==accountEpoch)return null;
       // Recommendation responses omit keywords: hydrate before checking TV horror/thriller or indie.
       const full=pickKeyword(chosenGenre,item.type)?{...item,...normalize(await api('/'+item.type+'/'+item.id+'?append_to_response=keywords'),item.type)}:item;
       if(!matchesPick(full,chosenMedia,chosenGenre))return null;
@@ -389,6 +394,7 @@ async function recommend(){
     });
     if(checked.length&&checked.every(x=>x?._error))throw new Error('Could not check streaming availability. Please retry.');
     const picks=checked.filter(x=>x&&!x._error&&!(library.dismissed||[]).includes(keyOf(x))&&!library.seen.some(s=>keyOf(s)===keyOf(x))&&!library.watchlist.some(s=>keyOf(s)===keyOf(x))).slice(0,12);
+    if(accountState.epoch!==accountEpoch)return;
     save({...library,recs:picks,recommendationSeed:selectedSeed});picks.forEach(remember);if(!picks.length)toast('No unseen streaming matches. Try Any year, another genre, or more services.');
   }catch(e){toast(e.message);}finally{recommending=false;if(route.view==='foryou')renderForYou();}
 }
@@ -429,9 +435,14 @@ $('genre').innerHTML=browseGenres.map(g=>`<option value="${g.id}">${esc(g.label)
 $('genre').addEventListener('change',()=>{genre=$('genre').value;if(genre==='doc'&&kind==='movie')kind='doc';try{persistPreferences();}catch{toast('Could not save genre preference.');}renderServices();loadCatalog();});
 $('kind').addEventListener('change',()=>{kind=$('kind').value;if(kind==='movie'&&genre==='doc')genre='all';if(kind==='movie'&&network!=='all')network='all';renderServices();loadCatalog();});
 $('import-backup').addEventListener('change',async e=>{
-  try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
+  try{const file=e.target.files[0];if(!file)return;if(file.size>5_000_000)throw new Error('Backup is too large.');const imported=validLibrary(JSON.parse(await file.text()));if(accountState.epoch!==accountEpoch)throw new Error('Account changed. Select the backup again for the intended account.');const merge=(a,b)=>[...new Map([...a,...b].map(x=>[keyOf(x),x])).values()];save({...library,watchlist:merge(library.watchlist,imported.watchlist),seen:merge(library.seen,imported.seen),ratings:{...library.ratings,...imported.ratings},dismissed:[...new Set([...(library.dismissed||[]),...(imported.dismissed||[])])],recs:library.recs.filter(x=>!imported.dismissed.includes(keyOf(x)))});[...library.watchlist,...library.seen].forEach(remember);renderWatchlist();toast('Backup merged with your library.');}catch(e){toast(e.message);}finally{e.target.value='';}
 });
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;});
 const updateNetworkStatus=()=>{$('offline').hidden=navigator.onLine;};window.addEventListener('online',updateNetworkStatus);window.addEventListener('offline',updateNetworkStatus);updateNetworkStatus();
-loadLibrary();similarSeed=library.recommendationSeed||null;renderServices();loadCatalog();importLegacy();if(initialRoute.view!=='home')showRoute(initialRoute,false);
+loadLibrary();similarSeed=library.recommendationSeed||null;renderServices();loadCatalog();if(initialRoute.view!=='home')showRoute(initialRoute,false);
+await importLegacy();
+mountAccounts({readGuest:()=>{const saved=readJSON('sr_library_v2',null);return saved?validLibrary(saved):migrateLegacy(readJSON('sr_wl',[]),readJSON('sr_seen',[]),readJSON('sr_ratings',{}));},validateLibrary:validLibrary,toast,setLibrary:next=>{
+  library=next;similarSeed=next.recommendationSeed||null;[...library.watchlist,...library.seen,...library.recs].forEach(remember);
+  if(route.view==='watchlist')renderWatchlist();else if(route.view==='foryou')renderForYou();else if(route.view==='detail')renderDetailActions();else if(route.view==='home'&&results.length)$('grid').innerHTML=visibleTitles(results).map(card).join('');
+}});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
