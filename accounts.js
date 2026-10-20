@@ -1,11 +1,11 @@
-import {client,initialSession,recoveryRequested,callbackError} from './auth-client.js';
+import {client,initialSession,recoveryRequested,callbackError,googleAvailable} from './auth-client.js';
 import {CloudLibrary,mergeGuestLibrary} from './library-sync.js';
 import {emptyLibrary,escapeHTML as esc} from './core.js';
 
 export const accountState={user:null,cloud:null,epoch:0};
 export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
   const dialog=document.getElementById('account-dialog'),content=document.getElementById('account-content');
-  let mode=recoveryRequested?'password':'signin',status='Browse as a guest, or sign in to sync your library.',busy=false,identity;
+  let mode=recoveryRequested?'password':'signin',status='Browse as a guest, or sign in to sync your library.',busy=false,identity,googleEnabled=false;
   const message=text=>{const target=document.getElementById('account-message');if(target)target.textContent=text;};
   const render=()=>{
     document.querySelectorAll('[data-account-open]').forEach(b=>{b.textContent=accountState.user?'Account':'Sign in';});
@@ -17,6 +17,7 @@ export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
       const password=mode!=='reset';
       content.innerHTML=`<p>Keep your ratings and watchlist private, sync across devices, and get picks based on your tastes.</p><form id="account-form">${mode==='password'?'':'<label for="account-email">Email<input id="account-email" type="email" name="email" autocomplete="email" maxlength="254" required></label>'}${password?`<label for="account-password">${mode==='password'?'New password':'Password'}<input id="account-password" name="password" type="password" autocomplete="${mode==='signin'?'current-password':'new-password'}" ${mode==='signin'?'':'minlength="10"'} maxlength="128" required></label>`:''}<button class="btn-main" type="submit">${mode==='signup'?'Create private account':mode==='reset'?'Send reset link':mode==='password'?'Save new password':'Sign in'}</button></form><p id="account-message" role="status"></p><div class="account-actions">${mode==='signin'?'<button class="text-button" data-account-action="signup">Create an account</button><button class="text-button" data-account-action="reset">Forgot password?</button>':mode==='password'?'':'<button class="text-button" data-account-action="signin">Back to sign in</button>'}</div><p class="data-note">You can keep browsing without an account. Existing browser saves are imported only when you choose.</p>`;
     }
+    if(!accountState.user&&mode!=='password')content.insertAdjacentHTML('beforeend',`<button class="text-button account-google" data-account-action="google" ${googleEnabled?'':'hidden'}>Continue with Google</button>`);
   };
   const cloud=new CloudLibrary({client,storage:localStorage,onChange:next=>{
     try{setLibrary(validateLibrary(next));}catch{status='Could not read the cloud library. Your existing data has not been deleted.';render();}
@@ -40,6 +41,9 @@ export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
     if(['signin','signup','reset'].includes(action)){mode=action;render();return;}
     busy=true;
     try{
+      if(action==='google'){
+        const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+'/',scopes:'openid email profile'}});if(error)throw error;
+      }
       if(action==='sync'){await cloud.sync();message(status);}
       if(action==='import'){
         const next=mergeGuestLibrary(cloud.library,readGuest());cloud.save(next);setLibrary(next);await cloud.sync();message('Browser saves imported. '+status);
@@ -53,7 +57,7 @@ export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
   });
   dialog.addEventListener('submit',async event=>{
     if(event.target.id!=='account-form')return;event.preventDefault();if(busy)return;
-    const form=new FormData(event.target),email=String(form.get('email')||'').trim(),password=String(form.get('password')||'');
+    const form=new FormData(event.target),email=String(form.get('email')||'').trim().toLowerCase(),password=String(form.get('password')||'');
     busy=true;event.target.querySelector('button').disabled=true;message('Please wait…');
     try{
       if(mode==='reset'){
@@ -75,6 +79,7 @@ export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
     void select(session);
   },0);});
   const refresh=()=>{if(accountState.user&&document.visibilityState==='visible')void cloud.sync();};
+  void googleAvailable.then(enabled=>{googleEnabled=enabled;const button=content.querySelector('[data-account-action="google"]');if(button)button.hidden=!enabled;});
   window.addEventListener('online',refresh);document.addEventListener('visibilitychange',refresh);setInterval(refresh,30000);
   void select(initialSession).then(()=>{render();if(recoveryRequested||callbackError){dialog.showModal();if(callbackError)message(callbackError);}});
 }

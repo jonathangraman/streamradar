@@ -337,3 +337,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .account-import h3{font-size:15px;margin:0}
 .account-email{overflow-wrap:anywhere;font-weight:700}
 #account-message{color:#ffda9c}
+
+.account-google{width:100%;min-height:44px;margin-top:12px}

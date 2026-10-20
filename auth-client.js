@@ -7,3 +7,6 @@ export const client=createClient('https://gdfuisnznbzwhskhxlcp.supabase.co','sb_
 });
 // Consume confirmation/recovery tokens before the app replaces its route fragment.
 export const initialSession=await client.auth.getSession().then(({data})=>data.session).catch(()=>null);
+export const googleAvailable=fetch('https://gdfuisnznbzwhskhxlcp.supabase.co/auth/v1/settings',{
+  headers:{apikey:'sb_publishable_JOffiFiaR-YxRFDE3BNpgQ_MG0wN6P2'},signal:AbortSignal.timeout(8000)
+}).then(async response=>response.ok&&(await response.json()).external?.google===true).catch(()=>false);
