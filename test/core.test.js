@@ -113,7 +113,9 @@ test('service worker falls back on 404 and never caches API/personal responses',
  const context={URL,Response,self:{location:{origin:'https://example.test'},addEventListener:(n,fn)=>events[n]=fn},caches:{open:async()=>({match:async k=>stored.get(k),put:async()=>{}})},fetch:async()=>new Response('missing',{status:404})};
  vm.runInNewContext(readFileSync(new URL('../sw.js',import.meta.url),'utf8'),context);
  events.fetch({request:{url:'https://example.test/',method:'GET',mode:'navigate'},respondWith:p=>result=p});assert.equal(await (await result).text(),'cached shell');
- let intercepted=false;events.fetch({request:{url:'https://example.test/api/tmdb?path=/search/movie',method:'GET',mode:'cors'},respondWith:()=>intercepted=true});assert.equal(intercepted,false);
+ for(const mode of ['cors','navigate'])for(const path of ['/api/tmdb?path=/search/movie','/api/trailer?type=movie&id=161&title=Ocean']){
+  let intercepted=false;events.fetch({request:{url:'https://example.test'+path,method:'GET',mode},respondWith:()=>intercepted=true});assert.equal(intercepted,false,mode+' '+path+' must bypass the shell fallback');
+ }
 });
 
 import {isOriginalSeries,isOriginalMovie,originalsOnlyServices,originalNetworks} from '../core.js';
