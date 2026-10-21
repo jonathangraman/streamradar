@@ -4,6 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import tmdb from '../api/tmdb.js';
 import ratings from '../api/ratings.js';
+import trailer from '../api/trailer.js';
 import aiPicks from '../api/ai-picks.js';
 const root=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 try{process.loadEnvFile(path.join(root,'.env.local'));}catch{}
@@ -11,7 +12,7 @@ const files=new Set(['index.html','styles.css','app.js','core.js','accounts.js',
 http.createServer(async(req,res)=>{
   res.status=n=>{res.statusCode=n;return res;};res.json=d=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d));};
   const name=new URL(req.url,'http://localhost').pathname;
-  if(name==='/api/tmdb')return tmdb(req,res);if(name==='/api/ratings')return ratings(req,res);
+  if(name==='/api/tmdb')return tmdb(req,res);if(name==='/api/ratings')return ratings(req,res);if(name==='/api/trailer')return trailer(req,res);
   if(name==='/api/ai-picks'){
     let body='';for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>4096)return res.status(413).json({error:'Request too large'});}
     req.body=body;return aiPicks(req,res);

@@ -342,3 +342,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 #account-message{color:#ffda9c}
 
 .account-google{width:100%;min-height:44px;margin-top:12px}
+
+.card-wrap{min-width:0}.card-trailer{display:block;padding:8px 10px;color:#ffaaaa;font-size:12px;font-weight:700;text-decoration:none}.card-trailer:hover{text-decoration:underline}.rec-card>.card-wrap{width:100%}.rec-card>.card-wrap>.card{display:flex;gap:14px;align-items:flex-start;background:none;border:0;width:100%;color:white}.rec-card>.card-wrap>.card>.card-img{flex:0 0 80px;width:80px;height:120px;aspect-ratio:2/3;border-radius:8px}.rec-card>.card-wrap>.card>.card-body{flex:1;padding:5px 0;min-width:0}.rec-card .card-title{font-size:16px}.rec-card .card-date{font-size:12px}.rec-card .card-trailer{margin-left:94px;padding-top:4px}
