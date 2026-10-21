@@ -1,10 +1,10 @@
-const CACHE='streamradar-shell-20261020-ai-picks-2';
+const CACHE='streamradar-shell-20261021-trailer-navigation';
 const SHELL=['/','/index.html','/styles.css','/app.js','/core.js','/legacy-config.js','/accounts.js','/auth-client.js','/library-sync.js','/vendor/supabase.js','/manifest.json'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('streamradar-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
   const url=new URL(event.request.url);
-  if(event.request.method!=='GET'||url.origin!==self.location.origin||(!SHELL.includes(url.pathname)&&event.request.mode!=='navigate'))return;
+  if(event.request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/')||(!SHELL.includes(url.pathname)&&event.request.mode!=='navigate'))return;
   event.respondWith((async()=>{
     const cache=await caches.open(CACHE);
     try{
