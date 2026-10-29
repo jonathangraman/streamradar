@@ -1,5 +1,7 @@
 export const keyOf = (item) => `${item.type || item.media_type}:${item.id}`;
-export const isEnglish = item => item?.original_language === 'en';
+// Dracula (2025) is English-language despite TMDB's French production-language tag.
+// Keep this correction tied to movie identity; do not admit unrelated French titles.
+export const isEnglish = item => item?.original_language === 'en' || ((item?.type || item?.media_type) === 'movie' && Number(item.id) === 1246049);
 export function parseRoute(hash){
   const match=/^#detail\/(movie|tv):(\d+)$/.exec(hash);if(match&&Number(match[2])>0)return {view:'detail',key:match[1]+':'+match[2]};
   const actor=/^#actor\/(\d+)$/.exec(hash);if(actor&&Number(actor[1])>0)return {view:'actor',id:Number(actor[1])};
@@ -57,7 +59,7 @@ export function contentLabels(item, now=today()) {
   return labels;
 }
 export function activityDate(item,now=today()){
-  const dates=[item.date];
+  const dates=[item.date,item.streamingDate];
   if(item.type==='tv'&&(!item.catalogService||item.catalogService==='all'||isOriginalSeries(item,item.catalogService)))dates.push(item.last_episode_to_air?.season_number>0?item.last_episode_to_air.air_date:null,...(item.seasons||[]).filter(s=>s.season_number>0).map(s=>s.air_date));
   return dates.filter(d=>d&&d<=now).sort().at(-1)||item.date||'';
 }
@@ -87,6 +89,27 @@ export function officialMovieService(item,service){
 }
 export function matchesOriginalMovie(item,service,when='now',now=today()){
  return originalServices(service).some(id=>isOriginalMovie(item,id)||(when==='soon'&&(item.date||item.release_date)>now&&officialMovieService(item,id)));
+}
+// Only service-named US digital releases count as arrivals: an unlabelled VOD
+// date or an official homepage alone cannot establish a subscription start date.
+export function streamingArrival(item,service,now=today()){
+ const services=originalServices(service);
+ const dates=(item.release_dates?.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates||[];
+ const namedService=note=>!/\b(?:rent(?:al)?|purchase|buy|pvod|tvod|est|vod|store)\b/i.test(note)&&services.some(id=>{
+  const name=id==='prime'?/\b(?:amazon prime(?: video)?|prime video)\b/i:id==='apple'?/\bapple tv\s*(?:\+|plus)/i:movieOriginalEvidence[id]?.name;
+  return name?.test(note);
+ });
+ const candidates=dates.filter(r=>r.type===4&&namedService(r.note||'')).map(r=>r.release_date?.slice(0,10));
+ candidates.push(...activeVerifiedOffers(now).filter(x=>keyOf(x)===keyOf(item)&&services.includes(x.service)).map(x=>x.start));
+ return candidates.filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')&&d>=shiftedDate(now,-90)&&d<=now).sort().at(-1)||null;
+}
+export function streamingArrivalQuery(options,now=today()){
+ const params=catalogQuery({...options,type:'movie'},now);
+ params.delete('primary_release_date.lte');params.delete('primary_release_date.gte');
+ params.set('region','US');params.set('with_release_type','4');
+ params.set('release_date.gte',shiftedDate(now,-90));params.set('release_date.lte',now);
+ params.set('sort_by','popularity.desc');
+ return params;
 }
 export const realityGenres=[10764,10767];
 export function isRealityTV(item){return (item.type||item.media_type)==='tv'&&(item.genre_ids||item.genres?.map(g=>g.id)||[]).some(id=>realityGenres.includes(id));}
@@ -264,7 +287,8 @@ export function browseGenreFilter(genre,type){
 export function matchesBrowseGenre(item,genre){const f=browseGenreFilter(genre,item.type);if(f.keyword)return (item.keywords?.keywords||item.keywords?.results||[]).some(k=>String(k.id)===f.keyword);return !f.genres||f.genres.split('|').some(id=>(item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(id)));}
 // Temporary, reviewed US availability corrections while provider indexing catches up.
 // Sources: official Prime title page and Netflix Tudum/title page, verified 2026-10-09. Never infer US offers from a network alone.
-export const verifiedUSOffers=[{id:1236045,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-09',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81757047',source:'https://media.netflix.com/en/only-on-netflix/81757047'},{id:285322,type:'tv',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-08',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81652677',source:'https://www.netflix.com/tudum/below'},{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
+// Dracula availability/date: https://www.paramountplus.com/sneak-peak/where-to-watch-luc-besson-dracula/
+export const verifiedUSOffers=[{id:1246049,type:'movie',service:'paramount',provider_id:2616,provider_name:'Paramount Plus Essential',start:'2026-10-12',reviewUntil:'2026-11-28',url:'https://www.paramountplus.com/movies/video/ALVE01M0GJZY0XEXQ8H80T4YJ77ANF/',source:'https://www.paramountplus.com/sneak-peak/where-to-watch-luc-besson-dracula/'},{id:1236045,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-09',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81757047',source:'https://media.netflix.com/en/only-on-netflix/81757047'},{id:285322,type:'tv',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-08',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81652677',source:'https://www.netflix.com/tudum/below'},{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
 export function activeVerifiedOffers(now=today()){return verifiedUSOffers.filter(x=>x.start<=now&&now<=x.reviewUntil);}
 export function withVerifiedUSOffers(item,offers={},now=today()){
  const verified=activeVerifiedOffers(now).filter(x=>keyOf(x)===keyOf(item));

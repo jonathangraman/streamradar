@@ -17,9 +17,9 @@ test('Movies excludes docs and stand-up while retaining ordinary comedy films',(
  }
  assert.equal(catalogQuery({kind:'all'}).has('without_genres'),false);assert.equal(catalogQuery({kind:'doc'}).get('with_genres'),'99');assert.equal(catalogQuery({kind:'standup'}).get('with_keywords'),'9716');
 });
-test('season badge includes day 90 but excludes day 91 and future season premieres',()=>{
+test('season badge includes day six but excludes day seven and future season premieres',()=>{
  const now='2026-09-28',label=air_date=>contentLabels({seasons:[{season_number:2,air_date}]},now).some(x=>x.kind==='season');
- assert(label(shiftedDate(now,-90)));assert(!label(shiftedDate(now,-91)));assert(label(now));assert(!label(shiftedDate(now,1)));
+ assert(label(shiftedDate(now,-6)));assert(!label(shiftedDate(now,-7)));assert(label(now));assert(!label(shiftedDate(now,1)));
 });
 test('weekly episodes produce a single dated pill, including scheduled episodes today',()=>{
  const item={last_episode_to_air:{season_number:2,episode_number:1,air_date:'2026-09-23'},next_episode_to_air:{season_number:2,episode_number:2,air_date:'2026-09-30'}};
@@ -83,7 +83,7 @@ test('content badges cover both API genre formats and only recently premiered re
  assert.equal(contentLabels({genre_ids:[99]}).some(x=>x.kind==='doc'),true);
  const seasons=[{season_number:0,air_date:'2026-09-27'},{season_number:1,air_date:'2026-09-27'},{season_number:2,air_date:'2026-06-01'},{season_number:3,air_date:'2026-10-01'}];
  assert.equal(contentLabels({seasons},'2026-09-28').length,0);
- assert.equal(contentLabels({seasons:[...seasons,{season_number:4,air_date:'2026-09-01'}]},'2026-09-28')[0].text,'SEASON PREMIERE');
+ assert.equal(contentLabels({seasons:[...seasons,{season_number:4,air_date:'2026-09-25'}]},'2026-09-28')[0].text,'SEASON PREMIERE');
 });
 test('MGM+, Starz and Showtime use direct subscriptions without channel add-ons',()=>{
  const catalog=['MGM Plus','Starz','Showtime','MGM+ Amazon Channel','Starz Apple TV channel'].map((provider_name,provider_id)=>({provider_id,provider_name}));
@@ -203,7 +203,7 @@ test('browse genre filters map movie genres and TV keywords across current and f
 });
 test('verified US corrections are title-specific, dated and do not duplicate upstream offers',()=>{
  const item={type:'tv',id:288673},now='2026-10-08';
- assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-09').length,0);
+ assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-29').length,0);
  assert.equal(withVerifiedUSOffers(item,{},now).flatrate[0].provider_name,'Amazon Prime Video');
  assert.equal(withVerifiedUSOffers({type:'movie',id:288673},{},now).flatrate.length,0);
  assert.equal(withVerifiedUSOffers(item,{flatrate:[{provider_id:9,provider_name:'Amazon Prime Video'}]},now).flatrate.length,1);
@@ -238,7 +238,8 @@ test('Netflix catalog series cannot inherit broadcast season badges or activity 
  assert.equal(activityDate(item,'2026-10-09'),'1990-09-13');
  const original={...item,networks:[{id:213}]};
  assert.equal(activityDate(original,'2026-10-09'),'2026-10-08');
- assert.equal(contentLabels(original,'2026-10-09')[0].text,'SEASON PREMIERE');
+ assert.equal(contentLabels(original,'2026-10-09').some(x=>x.text==='SEASON PREMIERE'),false);
+ assert.equal(contentLabels(original,'2026-10-09')[0].kind,'episode');
 });
 test('Below has a temporary Netflix correction with a confirmed US release date',()=>{
  const item={type:'tv',id:285322};

@@ -34,3 +34,11 @@ test('ratings reject broken IDs and omit unused provider fields',async()=>{
  const original=global.fetch;process.env.MDBLIST_API_KEY='test';global.fetch=async()=>({ok:true,json:async()=>({ratings:[{source:'imdb',value:7},{source:'unrelated',value:99}],private:'omit'})});
  try{r=response();await ratings({method:'GET',url:'/api/ratings?id=161&type=movie'},r);assert.equal(r.code,200);assert.equal(r.body.ratings.length,1);assert.equal(r.body.private,undefined);}finally{global.fetch=original;}
 });
+test('movie-specific English correction reaches search and related results without admitting French titles or same-ID TV',async()=>{
+ const original=global.fetch;process.env.TMDB_READ_TOKEN='test';
+ global.fetch=async()=>({ok:true,json:async()=>({results:[{id:1246049,title:'Dracula',original_language:'fr'},{id:123,original_language:'fr'}]})});
+ try{
+  for(const path of ['/search/movie','/movie/161/recommendations']){const r=response();await tmdb({method:'GET',url:'/api/tmdb?path='+path},r);assert.deepEqual(r.body.results.map(x=>x.id),[1246049]);}
+  const r=response();await tmdb({method:'GET',url:'/api/tmdb?path=/search/tv'},r);assert.deepEqual(r.body.results,[]);
+ }finally{global.fetch=original;}
+});

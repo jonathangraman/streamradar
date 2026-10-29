@@ -1,3 +1,4 @@
+import {isEnglish} from '../core.js';
 const allowed = /^\/(?:discover\/(?:movie|tv)|search\/(?:movie|tv)|watch\/providers\/(?:movie|tv)|movie\/\d+\/release_dates|tv\/\d+\/season\/\d+|(?:movie|tv)\/\d+(?:\/(?:watch\/providers|recommendations|similar))?|person\/\d+(?:\/combined_credits)?)$/;
 const params = new Set(['vote_average.gte','vote_count.gte','with_runtime.lte','language','query','page','watch_region','region','with_watch_providers','with_watch_monetization_types','with_keywords','with_genres','without_genres','without_keywords','with_networks','with_companies','air_date.gte','air_date.lte','sort_by','primary_release_date.gte','primary_release_date.lte','first_air_date.gte','first_air_date.lte','with_release_type','release_date.gte','release_date.lte','append_to_response','include_adult']);
 export default async function handler(req,res) {
@@ -16,8 +17,8 @@ export default async function handler(req,res) {
     const upstream=await fetch(target,{headers:{Authorization:'Bearer '+process.env.TMDB_READ_TOKEN},signal:AbortSignal.timeout(10000)});
     if(!upstream.ok)return res.status(upstream.status===429?429:502).json({error:upstream.status===429?'Catalog is busy. Please retry shortly.':'Catalog is temporarily unavailable.'});
     const data=await upstream.json();
-    if(path.startsWith('/search/')||path.endsWith('/recommendations')||path.endsWith('/similar')||path.startsWith('/discover/'))data.results=(data.results||[]).filter(item=>item.original_language==='en');
-    if(path.endsWith('/combined_credits'))data.cast=(data.cast||[]).filter(item=>item.original_language==='en');
+    if(path.startsWith('/search/')||path.endsWith('/recommendations')||path.endsWith('/similar')||path.startsWith('/discover/'))data.results=(data.results||[]).filter(item=>isEnglish({...item,media_type:path.includes('/movie')?'movie':'tv'}));
+    if(path.endsWith('/combined_credits'))data.cast=(data.cast||[]).filter(isEnglish);
     res.setHeader('Cache-Control',path.startsWith('/search/')?'private, max-age=60':'public, s-maxage=900, stale-while-revalidate=300');
     return res.status(200).json({...data,_fetchedAt:new Date().toISOString()});
   }catch{return res.status(504).json({error:'Catalog request timed out. Please retry.'});}

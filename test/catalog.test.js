@@ -40,3 +40,28 @@ test('Full catalog skips originals enforcement but still applies the reality pre
  const full=harness({scope:'catalog',api});await full.context.loadCatalog();assert.equal(full.context.results.length,1);
  const originals=harness({api});await originals.context.loadCatalog();assert.equal(originals.context.results.length,0);
 });
+test('default movie catalog finds older theatrical films through recent streaming discovery',async()=>{
+ const film={id:999,title:'New to Paramount',original_language:'en',release_date:'2025-01-01',genre_ids:[27]};
+ const calls=[];
+ const {context}=harness({service:'paramount',kind:'movie',today:()=> '2026-10-29',api:async path=>{
+  calls.push(path);
+  if(path.startsWith('/watch/providers/'))return {results:[{provider_id:2616,provider_name:'Paramount Plus Essential'}]};
+  if(path.startsWith('/discover/movie'))return {total_pages:1,results:path.includes('with_release_type=4')?[film]:[]};
+  if(path.endsWith('/release_dates'))return {results:[{iso_3166_1:'US',release_dates:[{type:3,release_date:'2025-01-01',note:''},{type:4,release_date:'2026-10-12',note:'Paramount+'}]}]};
+  if(path.startsWith('/movie/999?'))return film;
+  throw new Error('Unexpected '+path);
+ }});
+ await context.loadCatalog();assert.equal(context.results.length,1);assert.equal(context.results[0].streamingDate,'2026-10-12');
+ assert(calls.some(x=>x.includes('release_date.gte=2026-07-31')));
+});
+test('official Dracula correction survives missing discovery and French language metadata',async()=>{
+ const {context}=harness({service:'paramount',kind:'movie',today:()=> '2026-10-29',api:async path=>{
+  if(path.startsWith('/watch/providers/'))return {results:[{provider_id:2616,provider_name:'Paramount Plus Essential'}]};
+  if(path.startsWith('/discover/'))return {total_pages:1,results:[]};
+  if(path.endsWith('/release_dates'))return {results:[]};
+  if(path.startsWith('/movie/1246049?'))return {id:1246049,title:'Dracula',original_language:'fr',release_date:'2025-07-30',genre_ids:[27]};
+  throw new Error('Unexpected '+path);
+ }});
+ context.activeVerifiedOffers=()=>core.activeVerifiedOffers('2026-10-29');
+ await context.loadCatalog();assert.equal(context.results.length,1);assert.equal(context.results[0].title,'Dracula');assert.equal(context.results[0].streamingDate,'2026-10-12');
+});

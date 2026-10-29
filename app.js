@@ -1,4 +1,4 @@
-import {matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {streamingArrival,streamingArrivalQuery,matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 import {mountAccounts,accountState} from './accounts.js';
 import {client as accountClient} from './auth-client.js';
@@ -22,7 +22,7 @@ function refreshHome(){const q=$('home-search-input').value.trim();if(q)search(q
 const initialRoute=parseRoute(location.hash);
 let route={view:'home'},historyDepth=0,loading=false,toastTimer;
 const items=new Map(),cache=new Map(),sequence=createSequence(),detailSequence=createSequence(),actorSequence=createSequence();
-const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['keywords','seasons','genres','last_episode_to_air','next_episode_to_air','releaseSeasonEpisodes'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
+const remember=item=>{const x=normalize(item);if(x){const prior=items.get(keyOf(x));for(const field of ['streamingDate','keywords','seasons','genres','last_episode_to_air','next_episode_to_air','releaseSeasonEpisodes'])x[field]=x[field]||prior?.[field];items.set(keyOf(x),x);}return x;};
 const image=(path,size='w342')=> typeof path==='string'&&/^\/[\w.\/-]+$/.test(path)?IMG+size+path:'';
 function poster(item){const src=image(item.poster);return src?`<img src="${src}" alt="" loading="lazy">`:'<div class="no-img" aria-hidden="true">🎬</div>';}
 function tags(item,placement){return contentLabels(item).filter(label=>!placement||(placement==='poster'?label.kind==='season':label.kind!=='season')).map(label=>`<span class="content-tag tag-${label.kind}"${label.description?` title="${esc(label.description)}"`:''}>${esc(label.text)}</span>`).join('');}
@@ -107,7 +107,7 @@ function finaleLabel(item){
 }
 function posterTags(item){const finale=releaseMilestone(item)||finaleLabel(item);return (finale?`<span class="content-tag tag-season" title="Aired ${esc(formatDate(finale.date))}">${finale.text}</span>`:'')+tags(item,'poster')+(when==='soon'&&item.upcomingSeason>1?`<span class="content-tag tag-season">SEASON ${Number(item.upcomingSeason)} SOON</span>`:'');}
 function trailerLink(item){return '/api/trailer?'+new URLSearchParams({type:item.type,id:String(item.id),title:item.title.slice(0,200),year:/^\d{4}/.test(item.date||'')?item.date.slice(0,4):''});}
-function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${posterTags(item)}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${when==='soon'&&item.upcomingDate?'Expected':item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate((when==='soon'&&item.upcomingDate)||item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
+function card(raw){const item=remember(raw);if(!item)return '';return `<button class="card" data-action="detail" data-key="${keyOf(item)}"><div class="card-img">${poster(item)}<div class="poster-tags">${posterTags(item)}</div>${library.watchlist.some(w=>keyOf(w)===keyOf(item))?'<span class="badge-wl" aria-label="Saved">▣</span>':''}${item.vote_average>0?`<span class="card-rating">★ ${Number(item.vote_average).toFixed(1)}</span>`:''}</div><div class="card-body"><div class="card-tags">${tags(item,'body')}</div><div class="card-title">${esc(item.title)}</div><div class="card-date">${item.type==='tv'?'Series · ':'Movie · '}${when==='soon'&&item.upcomingDate?'Expected':item.streamingDate?'Streaming since':item.theaterDate?'US theatrical':service==='theaters'?'Original release':item.date>today()?'Expected':item.type==='tv'&&activityDate(item)!==item.date?'Latest airing':item.type==='tv'?'First aired':'Released'} ${esc(formatDate((when==='soon'&&item.upcomingDate)||item.streamingDate||item.theaterDate||(item.type==='tv'&&item.date<=today()?activityDate(item):item.date)))}</div></div></button>`;}
 async function loadCatalog(more=false){
   const request=sequence.next(),wanted={type,service,region,kind,genre,when,network,scope,reality,page:more?page+1:1};loading=true;
   searchController?.abort();if(!more){page=1;results=[];$('grid').innerHTML='<div class="loading" role="status">Loading titles…</div>';}
@@ -125,6 +125,10 @@ async function loadCatalog(more=false){
         if(wanted.service!=='theaters'&&!ids.length)throw new Error('This service is not currently listed in the US provider catalog.');
         const params=catalogQuery({...wanted,type:media,ids});
         const data=await api(`/discover/${media}?${params}`);
+        if(media==='movie'&&wanted.when==='now'&&originalMode){
+          const arrivals=await api('/discover/movie?'+streamingArrivalQuery({...wanted,ids},today()));
+          data.results=[...(arrivals.results||[]),...(data.results||[])];data.total_pages=Math.max(data.total_pages||1,arrivals.total_pages||1);
+        }
         if(media==='tv'&&wanted.when==='now'){
           // First-air sorting alone hides returning shows. Also retrieve series airing recently.
           const recent=new URLSearchParams(params);recent.set('air_date.gte',shiftedDate(today(),-30));recent.set('air_date.lte',today());recent.set('sort_by','popularity.desc');
@@ -135,7 +139,7 @@ async function loadCatalog(more=false){
           const returning=await api('/discover/tv?'+upcomingSeasonQuery({...wanted,ids}));
           data.results=[...(data.results||[]),...(returning.results||[])];data.total_pages=Math.max(data.total_pages||1,returning.total_pages||1);
         }
-        return {...data,results:(data.results||[]).filter(isEnglish).map(x=>normalize(x,media))};
+        return {...data,results:(data.results||[]).map(x=>normalize(x,media)).filter(isEnglish)};
       }));
       if(!sequence.current(request))return;
       const batches=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
@@ -177,7 +181,9 @@ async function loadCatalog(more=false){
           if(item.type==='tv'){const collection=wanted.service==='max'&&wanted.network!=='all';return (collection?(item.networks||[]).some(n=>n.id===(wanted.network==='food'?143:64)):matchesOriginalSeries(item,wanted.service))?item:null;}
           if(wanted.when==='soon'&&matchesOriginalMovie(item,wanted.service,'soon'))return item;
           const releases=await api('/movie/'+item.id+'/release_dates');
-          return matchesOriginalMovie({...item,release_dates:releases},wanted.service)?item:null;
+          const dated={...item,release_dates:releases};
+          const arrival=wanted.when==='now'?streamingArrival(dated,wanted.service,today()):null;
+          return arrival?{...item,streamingDate:arrival}:matchesOriginalMovie(dated,wanted.service)?item:null;
         });
         if(!sequence.current(request))return;
         if(incoming.some(item=>item?._error))incomplete=true;
@@ -208,7 +214,7 @@ async function loadCatalog(more=false){
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
     $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No verified titles match these filters. Choose Reality & talk in Show, or Full catalog for licensed titles.</div>';
-    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals only · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals + new movies · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     if(incomplete)$('count-lbl').textContent+=' · Some results unavailable; retry to check all categories';
     $('load-more').hidden=page>=totalPages;
     enrichLabels([...added.values()],request);
@@ -244,7 +250,7 @@ function onSearch(){
 async function search(q){
   const request=sequence.next();searchController=new AbortController();const signal=searchController.signal;
   try{
-    const parts=await Promise.all(['movie','tv'].map(async t=>{const d=await api(`/search/${t}?query=${encodeURIComponent(q)}&page=1`,{signal});return (d.results||[]).filter(isEnglish).map(x=>normalize(x,t)).filter(Boolean);}));
+    const parts=await Promise.all(['movie','tv'].map(async t=>{const d=await api(`/search/${t}?query=${encodeURIComponent(q)}&page=1`,{signal});return (d.results||[]).map(x=>normalize(x,t)).filter(isEnglish);}));
     if(!sequence.current(request))return;
     const found=visibleTitles(parts.flat()).sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,30);
     $('count-lbl').textContent=`${found.length} English matches · ${region}`;
@@ -366,7 +372,7 @@ async function recommend(useAI=false){
     const requests=seeds.flatMap(seed=>['recommendations','similar'].map(endpoint=>({seed,endpoint})));
     const batches=await mapLimit(requests,3,async({seed,endpoint})=>{
       const d=await api('/'+seed.type+'/'+seed.id+'/'+endpoint);
-      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,seed.type),relatedTo:keyOf(seed),affinity:(endpoint==='recommendations'?4:2)*(seed.seedWeight||3)/3,reason:selectedSeed?'Similar to '+seed.title:seed.seedReason==='watchlist'?'Because '+seed.title+' is on your watchlist':'Because you rated '+seed.title+' '+sourceLibrary.ratings[keyOf(seed)]+'/5'}));
+      return (d.results||[]).map(x=>normalize(x,seed.type)).filter(isEnglish).map(x=>({...x,relatedTo:keyOf(seed),affinity:(endpoint==='recommendations'?4:2)*(seed.seedWeight||3)/3,reason:selectedSeed?'Similar to '+seed.title:seed.seedReason==='watchlist'?'Because '+seed.title+' is on your watchlist':'Because you rated '+seed.title+' '+sourceLibrary.ratings[keyOf(seed)]+'/5'}));
     });
     const related=batches.filter(Array.isArray).flat();
     if(accountState.epoch!==accountEpoch)return;
@@ -382,7 +388,7 @@ async function recommend(useAI=false){
       const keyword=pickKeyword(chosenGenre,media);
       if(keyword)p.set('with_keywords',keyword);else if(chosenGenre!=='all')p.set('with_genres',pickGenreIds(chosenGenre,media));
       const d=await api('/discover/'+media+'?'+p);
-      return (d.results||[]).filter(isEnglish).map(x=>({...normalize(x,media),...(keyword?{keywords:{keywords:[{id:keyword}]}}:{}),affinity:0,reason:'A US streaming discovery matching your filters'}));
+      return (d.results||[]).map(x=>normalize(x,media)).filter(isEnglish).map(x=>({...x,...(keyword?{keywords:{keywords:[{id:keyword}]}}:{}),affinity:0,reason:'A US streaming discovery matching your filters'}));
     });
     if([...batches,...discoveries].length&&[...batches,...discoveries].every(x=>x._error))throw new Error('Picks are temporarily unavailable. Please retry.');
     const prior=new Set(library.recs.map(keyOf));
