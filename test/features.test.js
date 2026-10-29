@@ -34,3 +34,10 @@ test('fantasy movie matches recommendations and previous-provider arrival dates 
 test('licensed series cannot show a batch-release milestone for an unverified service season',()=>{
  const item={...show,catalogService:'netflix',networks:[{id:6}],seasons:[{season_number:1,episode_count:2}],releaseSeasonEpisodes:[{episode_number:1,air_date:now},{episode_number:2,air_date:now}]};assert.equal(releaseMilestone(item,now),null);
 });
+
+test('calendar discovery hides syndicated broadcast and talk series unless explicitly saved',async()=>{
+ const {eligibleCalendarSeries}=await import('../core.js');
+ const soap={type:'tv',first_air_date:'1965-11-08',networks:[{id:6},{id:3353}],genres:[{id:18}]};
+ const talk={type:'tv',first_air_date:'2020-01-01',networks:[{id:213}],genres:[{id:10767}]};
+ assert.equal(eligibleCalendarSeries(soap),false);assert.equal(eligibleCalendarSeries(talk),false);assert.equal(eligibleCalendarSeries(soap,true),true);assert.equal(eligibleCalendarSeries({...talk,genres:[{id:18}]}),true);
+});

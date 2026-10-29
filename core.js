@@ -375,3 +375,5 @@ export function futureMovieQuery(options={},now=today()){
  for(const key of ['primary_release_date.gte','primary_release_date.lte','with_watch_providers','with_watch_monetization_types','watch_region'])q.delete(key);
  q.set('region','US');q.set('with_release_type','4');q.set('release_date.gte',now);q.set('release_date.lte',shiftedDate(now,90));q.set('sort_by','popularity.desc');return q;
 }
+
+export function eligibleCalendarSeries(item,saved=false){return saved||(matchesOriginalSeries(item,'all')&&matchesReality(item,'exclude'));}
