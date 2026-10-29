@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {emptyLibrary,updateLibrary,recommendationSeeds,tasteProfile,rankRecommendations} from '../core.js';
 import {CloudLibrary,libraryChanges,recordsToLibrary,mergeGuestLibrary} from '../library-sync.js';
 const film=(id,type='movie',genre=18)=>({id,type,title:'Title '+id,date:'2020-01-01',genre_ids:[genre],original_language:'en'});
-const storage=()=>{const data=new Map();return {getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v)};};
+const storage=()=>{const data=new Map();return {getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k),get length(){return data.size;},key:i=>[...data.keys()][i]};};
 function fakeClient(){
  const db=new Map();let owner='a',offline=false;
  return {db,setOwner:x=>owner=x,setOffline:x=>offline=x,
@@ -35,7 +35,7 @@ test('switching accounts isolates caches and ignores an old account sync respons
  const client=fakeClient(),disk=storage(),seen=[];const cloud=new CloudLibrary({client,storage:disk,onChange:x=>seen.push(x),onStatus:()=>{}});
  await cloud.select({id:'a'});cloud.save(updateLibrary(cloud.library,'watch',film(1)));await cloud.sync();
  client.setOwner('b');await cloud.select({id:'b'});assert.equal(cloud.library.watchlist.length,0);
- let resolve;client.rpc=()=>new Promise(r=>{resolve=r;});cloud.save(updateLibrary(cloud.library,'watch',film(2)));await cloud.select(null);resolve({error:null});await new Promise(r=>setTimeout(r));assert.equal(cloud.user,null);assert(!seen.at(-1).watchlist.some(x=>x.id===1));
+ let resolve;client.rpc=()=>new Promise(r=>{resolve=r;});cloud.save(updateLibrary(cloud.library,'watch',film(2)));await new Promise(r=>setTimeout(r));await cloud.select(null);resolve({error:null});await new Promise(r=>setTimeout(r));assert.equal(cloud.user,null);assert(!seen.at(-1).watchlist.some(x=>x.id===1));
 });
 test('quota failure leaves the in-memory library and pending queue unchanged',async()=>{
  const cloud=new CloudLibrary({client:fakeClient(),storage:storage(),onChange:()=>{},onStatus:()=>{}});await cloud.select({id:'a'});cloud.storage.setItem=()=>{throw Error('quota');};
@@ -45,4 +45,27 @@ test('ratings outweigh watchlist interest and dislikes lower matching genres',()
  const library=emptyLibrary();library.seen=[film(1),film(2,'movie',27),film(4)];library.watchlist=[film(3,'tv')];library.ratings={'movie:1':5,'movie:2':1,'movie:4':4};
  const seeds=recommendationSeeds(library);assert.deepEqual(seeds.map(x=>x.id),[1,4,3]);assert(seeds[0].seedWeight>seeds[1].seedWeight);assert(seeds[1].seedWeight>seeds[2].seedWeight);
  assert.equal(recommendationSeeds(library,'tv').length,1);const ranked=rankRecommendations([film(10,'movie',27),film(11)],[],new Set(),tasteProfile(library));assert.equal(ranked[0].id,11);
+});
+test('two stale guest tabs preserve independent saves and removals through reload',async()=>{
+ const {commitGuestLibrary,readGuestLibrary}=await import('../library-sync.js'),disk=storage();
+ const a=emptyLibrary(),b=emptyLibrary();
+ commitGuestLibrary(disk,a,updateLibrary(a,'watch',film(1)));
+ const second=commitGuestLibrary(disk,b,updateLibrary(b,'watch',film(2)));
+ assert.deepEqual(second.watchlist.map(x=>x.id).sort(),[1,2]);
+ const removed=updateLibrary(second,'watch',film(1));commitGuestLibrary(disk,second,removed);
+ assert.deepEqual(readGuestLibrary(disk).watchlist.map(x=>x.id),[2]);
+});
+test('two offline account tabs retain both durable operations when a tab closes',async()=>{
+ const client=fakeClient(),disk=storage(),make=()=>new CloudLibrary({client,storage:disk,onChange:()=>{},onStatus:()=>{}}),a=make(),b=make();
+ await a.select({id:'a'});await b.select({id:'a'});client.setOffline(true);
+ a.save(updateLibrary(a.library,'watch',film(1)));b.save(updateLibrary(b.library,'watch',film(2)));await Promise.all([a.sync(),b.sync()]);
+ const reload=make();await reload.select({id:'a'});assert.deepEqual(reload.library.watchlist.map(x=>x.id).sort(),[1,2]);assert.equal(Object.keys(reload.pending).length,2);
+ client.setOffline(false);await reload.sync();assert.equal(client.db.size,2);assert.equal(Object.keys(reload.pending).length,0);
+});
+test('individual episode patches survive cloud sync and merge across devices',async()=>{
+ const {setEpisodeProgress}=await import('../core.js'),client=fakeClient(),disk=storage(),cloud=new CloudLibrary({client,storage:disk,onChange:()=>{},onStatus:()=>{}});await cloud.select({id:'a'});
+ const show=film(10,'tv');cloud.save(setEpisodeProgress(cloud.library,show,[{season_number:1,episode_number:1,air_date:'2020-01-01'}]));await cloud.sync();
+ client.db.get('a:tv:10').state.ep_1_2=true;await cloud.sync();
+ assert.deepEqual(cloud.library.progress['tv:10'].episodes,{'1:1':true,'1:2':true});
+ cloud.save(setEpisodeProgress(cloud.library,show,[{season_number:1,episode_number:1,air_date:'2020-01-01'}],false));await cloud.sync();assert.equal(client.db.get('a:tv:10').state.ep_1_1,false);assert.equal(client.db.get('a:tv:10').state.ep_1_2,true);
 });

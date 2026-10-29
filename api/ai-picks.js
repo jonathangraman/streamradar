@@ -1,3 +1,4 @@
+import {isEnglish} from '../core.js';
 import {createClient} from '@supabase/supabase-js';
 import {generateText,Output} from 'ai';
 import {createClaudeModel} from '../lib/claude-provider.js';
@@ -48,7 +49,7 @@ export function makeHandler({policy=aiPolicy,now=()=>new Date(),clientFor=token=
    for(let i=0;i<ids.length;i+=4){
     const batch=await Promise.all(ids.slice(i,i+4).map(async id=>{
      const item=await catalog(id),date=item.release_date||item.first_air_date;
-     if(item.adult||item.original_language!=='en'||!date||date>now().toISOString().slice(0,10)||!item['watch/providers']?.results?.US?.flatrate?.length)return null;
+     if(item.adult||!isEnglish({...item,type:id.split(':')[0]})||!date||date>now().toISOString().slice(0,10)||!item['watch/providers']?.results?.US?.flatrate?.length)return null;
      return {key:id,title:String(item.title||item.name||'').slice(0,160),year:date.slice(0,4),genres:(item.genres||[]).map(g=>g.name).slice(0,6),overview:String(item.overview||'').slice(0,400)};
     }));candidates.push(...batch.filter(Boolean));
    }

@@ -41,6 +41,11 @@ test('real PostgreSQL policies isolate two users and reject anonymous access and
   await asUser(b);assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,false);
   await asUser(a);
   await assert.rejects(db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{...patch[0],expected_user:a,state:{rating:9}}])]),/valid_state/);
+  await db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{media_type:'tv',tmdb_id:42,expected_user:a,item:{id:42,type:'tv',title:'Progress'},state:{tracking:true,ep_1_1:true}}])]);
+  await db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{media_type:'tv',tmdb_id:42,expected_user:a,state:{ep_1_2:true}}])]);
+  assert.deepEqual((await db.query('select state from public.library_entries where media_type=\'tv\' and tmdb_id=42')).rows[0].state,{tracking:true,ep_1_1:true,ep_1_2:true});
+  await assert.rejects(db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{media_type:'tv',tmdb_id:42,expected_user:a,state:{ep_1_2:'yes'}}])]),/valid_state/);
+  await assert.rejects(db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{media_type:'tv',tmdb_id:42,expected_user:a,state:{ep_0_2:true}}])]),/valid_state/);
   await db.exec('reset role;set role anon');
   await assert.rejects(db.exec('select * from public.library_entries'),/permission denied/);
   await assert.rejects(db.exec('select public.claim_ai_pick()'),/permission denied/);

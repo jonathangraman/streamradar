@@ -5,7 +5,7 @@ export const isEnglish = item => item?.original_language === 'en' || ((item?.typ
 export function parseRoute(hash){
   const match=/^#detail\/(movie|tv):(\d+)$/.exec(hash);if(match&&Number(match[2])>0)return {view:'detail',key:match[1]+':'+match[2]};
   const actor=/^#actor\/(\d+)$/.exec(hash);if(actor&&Number(actor[1])>0)return {view:'actor',id:Number(actor[1])};
-  const view=hash.replace(/^#/,'');return {view:['home','watchlist','foryou','about'].includes(view)?view:'home'};
+  const view=hash.replace(/^#/,'');return {view:['home','watchlist','foryou','calendar','about'].includes(view)?view:'home'};
 }
 export function normalize(item, type) {
   const media = type || item.type || item.media_type || item._type;
@@ -24,8 +24,9 @@ export function isStandup(item) {
   return keywords.some(k => k.id===9716 || /^(stand-up comedy|stand up comedy|stand-up special|standup comedy)$/i.test(k.name)) || /\bstand[- ]?up (comedy|special|performance)|\bcomedy special\b/i.test(item.title || item.name || '');
 }
 export function isNarrativeMovie(item){return (item.type||item.media_type)==='movie'&&!(item.genre_ids||[]).includes(99)&&!(item.genres||[]).some(g=>g.id===99)&&!isStandup(item);}
+export function episodeLabelsAllowed(item){return !item.catalogService||item.catalogService==='all'||isOriginalSeries(item,item.catalogService);}
 export function releaseMilestone(item,now=today()) {
-  if(item?.type!=='tv')return null;
+  if(item?.type!=='tv'||!episodeLabelsAllowed(item))return null;
   const ep=item.last_episode_to_air;
   const season=(item.seasons||[]).find(s=>s.season_number===ep?.season_number);
   const episodes=item.releaseSeasonEpisodes;
@@ -206,22 +207,22 @@ export function newestFirst(a,b){return (b.date||'').localeCompare(a.date||'')||
 export function discoveryOrder(type, now=today()) {
   return type==='tv'?{sort_by:'first_air_date.desc','first_air_date.lte':now}:{sort_by:'primary_release_date.desc','primary_release_date.lte':now};
 }
-export function calendarEvent(item, date) {
+export function calendarEvent(item, date, event=null) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('No confirmed date is available.');
   const clean = s => String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/[,;]/g,m=>'\\'+m);
   const end = new Date(date+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+1);
-  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//StreamRadar//Release Calendar//EN','BEGIN:VEVENT',`UID:${keyOf(item)}-${date}@streamradar`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z')}`,`DTSTART;VALUE=DATE:${date.replace(/-/g,'')}`,`DTEND;VALUE=DATE:${end.toISOString().slice(0,10).replace(/-/g,'')}`,`SUMMARY:${clean(item.title)}`,`DESCRIPTION:${clean('Episode or original release date from TMDB; streaming arrival may differ.')}`,'BEGIN:VALARM','TRIGGER:-P1D','ACTION:DISPLAY',`DESCRIPTION:${clean(item.title)}`,'END:VALARM','END:VEVENT','END:VCALENDAR',''].join('\r\n');
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//StreamRadar//Release Calendar//EN','BEGIN:VEVENT',`UID:${keyOf(item)}-${date}${event?'-'+[event.kind,event.service,event.season,event.episode].filter(Boolean).join('-'):''}@streamradar`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z')}`,`DTSTART;VALUE=DATE:${date.replace(/-/g,'')}`,`DTEND;VALUE=DATE:${end.toISOString().slice(0,10).replace(/-/g,'')}`,`SUMMARY:${clean(item.title+(event?.label?' — '+event.label:''))}`,`DESCRIPTION:${clean(event?event.source+'; '+(serviceDefinitions.find(s=>s.id===event.service)?.label||'Service availability unconfirmed'):'Episode or original release date from TMDB; streaming arrival may differ.')}`,'BEGIN:VALARM','TRIGGER:-P1D','ACTION:DISPLAY',`DESCRIPTION:${clean(item.title)}`,'END:VALARM','END:VEVENT','END:VCALENDAR',''].join('\r\n');
 }
 export const pickGenres=[{id:'all',label:'All genres'},{id:'53',label:'Thriller'},{id:'27',label:'Horror'},{id:'35',label:'Comedy'},{id:'18',label:'Drama'},{id:'80',label:'Crime'},{id:'9648',label:'Mystery'},{id:'10749',label:'Romance'},{id:'28',label:'Action'},{id:'878',label:'Sci-fi & fantasy'},{id:'99',label:'Documentary'},{id:'indie',label:'Indie films'}];
-export function pickGenreIds(genre,type){return type==='tv'&&genre==='28'?'10759':type==='tv'&&genre==='878'?'10765':genre;}
+export function pickGenreIds(genre,type){return type==='tv'&&genre==='28'?'10759':genre==='878'?(type==='tv'?'10765':'878|14'):genre;}
 export function pickKeyword(genre,type){return genre==='indie'?281237:type==='tv'?({'27':315058,'53':316362,'10749':9840}[genre]||null):null;}
 export function matchesPick(item,media,genre){
   if(media!=='all'&&item.type!==media)return false;if(genre==='all')return true;
   const keyword=pickKeyword(genre,item.type);
   if(keyword)return (genre!=='indie'||item.type==='movie')&&(item.keywords?.keywords||item.keywords?.results||[]).some(k=>k.id===keyword);
-  return (item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(pickGenreIds(genre,item.type)));
+  return pickGenreIds(genre,item.type).split('|').some(id=>(item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(id)));
 }
-export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],dismissed:[],legacyImported:false}; }
+export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],dismissed:[],progress:{},legacyImported:false}; }
 export function migrateLegacy(watchlist=[], seen=[], ratings={}) {
   const state=emptyLibrary();
   state.watchlist=watchlist.map(x=>normalize(x,x.type || 'movie')).filter(Boolean);
@@ -238,10 +239,10 @@ export function updateLibrary(state, action, item, stars) {
   const valid=normalize(item); if(!valid) throw new Error('This title has no valid identity.');
   const next=structuredClone(state), key=keyOf(valid);
   if(action==='watch') {
-    next.watchlist=next.watchlist.some(x=>keyOf(x)===key) ? next.watchlist.filter(x=>keyOf(x)!==key) : [...next.watchlist,valid];
+    next.watchlist=next.watchlist.some(x=>keyOf(x)===key) ? next.watchlist.filter(x=>keyOf(x)!==key) : [...next.watchlist,{...valid,addedAt:new Date().toISOString()}];
   } else if(action==='seen' || action==='rate') {
     next.watchlist=next.watchlist.filter(x=>keyOf(x)!==key);
-    if(!next.seen.some(x=>keyOf(x)===key))next.seen.push(valid);
+    next.seen=next.seen.filter(x=>keyOf(x)!==key);next.seen.push({...valid,seenAt:new Date().toISOString()});
     next.recs=next.recs.filter(x=>keyOf(x)!==key);
     if(action==='rate') {
       if(!Number.isInteger(stars)||stars<1||stars>5)throw new Error('Choose a rating from one to five.');
@@ -274,7 +275,7 @@ export function providerIds(catalog, service) {
   return catalog.filter(p=>def?.match(p.provider_name)).map(p=>p.provider_id);
 }
 
-export function unseenTitles(titles,library,hide=true){const seen=new Set((library.seen||[]).map(keyOf));return hide?titles.filter(x=>!seen.has(keyOf(x))):titles;}
+export function unseenTitles(titles,library,hide=true){const seen=new Set((library.seen||[]).map(keyOf));return hide?titles.filter(x=>!seen.has(keyOf(x))||hasNewEpisodes(x,library)):titles;}
 export function pickSubscriptionOffers(offers,services=[]){return (offers?.flatrate||[]).filter(p=>!services.length||services.some(id=>serviceDefinitions.find(s=>s.id===id)?.match(p.provider_name)));}
 
 export const browseGenres=[{id:'all',label:'All genres'},{id:'action',label:'Action & Adventure'},{id:'animation',label:'Animation'},{id:'comedy',label:'Comedy'},{id:'crime',label:'Crime'},{id:'doc',label:'Documentaries'},{id:'drama',label:'Drama'},{id:'family',label:'Kids & Family'},{id:'horror',label:'Horror'},{id:'romance',label:'Romance'},{id:'scifi',label:'Sci-Fi & Fantasy'},{id:'thriller',label:'Thriller'},{id:'mystery',label:'Mystery'},{id:'western',label:'Westerns'}];
@@ -329,4 +330,48 @@ export function rankRecommendations(candidates,seeds=[],prior=new Set(),profile=
 export function scheduledVerifiedReleases(now=today()){return verifiedUSOffers.filter(x=>x.start>now&&x.start<=shiftedDate(now,90)&&now<=x.reviewUntil);}
 export function hasOfficialNetflixHomepage(item){
  try{const u=new URL(item.homepage);return u.protocol==='https:'&& /^(?:www\.)?netflix\.com$/.test(u.hostname)&&/^\/title\/\d+/.test(u.pathname);}catch{return false;}
+}
+
+export function mergeRemembered(item,prior){
+ const out={...item};for(const field of ['keywords','seasons','genres','last_episode_to_air','next_episode_to_air','releaseSeasonEpisodes'])out[field]??=prior?.[field];
+ return out;
+}
+export function setEpisodeProgress(library,item,episodes,watched=true){
+ if(item?.type!=='tv')throw new Error('Episode tracking is for series.');
+ const next=structuredClone(library),key=keyOf(item),old=next.progress?.[key];next.progress||={};
+ const state={item:{...item},tracking:true,episodes:{...old?.episodes}};
+ for(const ep of episodes){if(!Number.isInteger(ep.season_number)||ep.season_number<1||!Number.isInteger(ep.episode_number)||ep.episode_number<1)throw new Error('Invalid episode.');if(watched&&(!ep.air_date||ep.air_date>today()))throw new Error('This episode has not aired yet.');state.episodes[ep.season_number+':'+ep.episode_number]=watched;}
+ next.progress[key]=state;return next;
+}
+export function hasNewEpisodes(item,library){
+ const progress=library.progress?.[keyOf(item)],last=item.last_episode_to_air;
+ if(progress?.tracking&&last?.season_number>0&&last.episode_number>0&&last.air_date<=today())return progress.episodes?.[last.season_number+':'+last.episode_number]!==true;
+ const seen=library.seen.find(x=>keyOf(x)===keyOf(item));return item.type==='tv'&&seen?.seenAt&&last?.air_date>seen.seenAt.slice(0,10)&&last.air_date<=today();
+}
+export function filterWatchlist(titles,library,{query='',type='all',service='all',status='all',sort='added'}={}){
+ const filtered=titles.filter(x=>(!query||x.title.toLowerCase().includes(query.toLowerCase()))&&(type==='all'||x.type===type)&&(service==='all'||x.subscriptionServices?.includes(service))&&(status==='all'||status==='new'&&hasNewEpisodes(x,library)||status==='tracking'&&library.progress?.[keyOf(x)]?.tracking||status==='available'&&x.subscriptionServices?.length));
+ return filtered.sort((a,b)=>sort==='title'?a.title.localeCompare(b.title):sort==='rating'?(library.ratings[keyOf(b)]||0)-(library.ratings[keyOf(a)]||0):sort==='release'?recentActivityFirst(a,b):(b.addedAt||'').localeCompare(a.addedAt||''));
+}
+export function resolvedEvent(item,now=today()){
+ if(item.calendarEvent?.date>=now)return item.calendarEvent;
+ if(item.theaterDate>=now)return {date:item.theaterDate,kind:'theater',label:'US theatrical release',source:'TMDB US release dates'};
+ const premiere=upcomingPremiere(item,now),ep=item.next_episode_to_air;
+ if(ep?.air_date>=now)return {date:ep.air_date,kind:'episode',label:`Season ${ep.season_number}, episode ${ep.episode_number}`,season:ep.season_number,episode:ep.episode_number,source:'TMDB episode air date; service availability may vary'};
+ if(item.upcomingDate>=now||premiere)return {date:item.upcomingDate||premiere.date,kind:'season',label:'Season '+(item.upcomingSeason||premiere?.season)+' premiere',source:'TMDB season air date; service availability may vary'};
+ if(item.date>=now)return {date:item.date,kind:'premiere',label:item.type==='tv'?'Series premiere':'Original release',source:'TMDB original release; streaming date unconfirmed'};
+ return null;
+}
+export function movieStreamingEvents(item,service='all',now=today(),days=90){
+ const end=shiftedDate(now,days),events=[];
+ for(const release of (item.release_dates?.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates||[]){
+  const date=release.release_date?.slice(0,10);if(release.type!==4||date<now||date>end||!/^(\d{4}-\d{2}-\d{2})$/.test(date||'')||/\b(?:rent(?:al)?|purchase|buy|pvod|tvod|est|vod|store)\b/i.test(release.note||''))continue;
+  for(const id of originalServices(service)){const name=id==='prime'?/\b(?:amazon prime(?: video)?|prime video)\b/i:id==='apple'?/\bapple tv\s*(?:\+|plus)/i:movieOriginalEvidence[id]?.name;if(name?.test(release.note||''))events.push({date,kind:'streaming',service:id,label:'Streaming premiere',source:'TMDB service-named US digital release'});}
+ }
+ for(const entry of verifiedUSOffers.filter(x=>keyOf(x)===keyOf(item)&&originalServices(service).includes(x.service)&&x.start>=now&&x.start<=end))events.push({date:entry.start,kind:'streaming',service:entry.service,label:'Streaming premiere',source:entry.source||entry.url});
+ return [...new Map(events.map(e=>[e.date+':'+e.service,e])).values()].sort((a,b)=>a.date.localeCompare(b.date));
+}
+export function futureMovieQuery(options={},now=today()){
+ const q=catalogQuery({...options,type:'movie',when:'soon'},now);
+ for(const key of ['primary_release_date.gte','primary_release_date.lte','with_watch_providers','with_watch_monetization_types','watch_region'])q.delete(key);
+ q.set('region','US');q.set('with_release_type','4');q.set('release_date.gte',now);q.set('release_date.lte',shiftedDate(now,90));q.set('sort_by','popularity.desc');return q;
 }

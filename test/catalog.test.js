@@ -8,7 +8,7 @@ const load=source.slice(source.indexOf('async function loadCatalog('),source.ind
 const limit=source.slice(source.indexOf('async function mapLimit('),source.indexOf('\n',source.indexOf('async function mapLimit(')));
 function harness(options={}){
  const nodes=new Map(),calls=[];const $=id=>{if(!nodes.has(id))nodes.set(id,{});return nodes.get(id);};
- const context=vm.createContext({...core,URLSearchParams,Promise,Map,Set,Number,Error,$,type:'tv',service:'prime',region:'US',kind:'tv',genre:'all',when:'now',network:'all',scope:'originals',reality:'exclude',page:1,totalPages:1,results:[],loading:false,searchController:null,sequence:core.createSequence(),...options,
+ const context=vm.createContext({...core,AbortController,DOMException,catalogController:null,homeLoaded:false,URLSearchParams,Promise,Map,Set,Number,Error,$,type:'tv',service:'prime',region:'US',kind:'tv',genre:'all',when:'now',network:'all',scope:'originals',reality:'exclude',page:1,totalPages:1,results:[],loading:false,searchController:null,sequence:core.createSequence(),...options,
   activeVerifiedOffers:()=>[],scheduledVerifiedReleases:()=>[],visibleTitles:x=>x.filter(item=>!options.seen?.has(core.keyOf(item))),card:x=>x.title,errorHTML:x=>'ERROR: '+x,enrichLabels:()=>{},
   api:async path=>{
    calls.push(path);
@@ -64,4 +64,15 @@ test('official Dracula correction survives missing discovery and French language
  }});
  context.activeVerifiedOffers=()=>core.activeVerifiedOffers('2026-10-29');
  await context.loadCatalog();assert.equal(context.results.length,1);assert.equal(context.results[0].title,'Dracula');assert.equal(context.results[0].streamingDate,'2026-10-12');
+});
+test('cancelling a catalog run stops the remaining queued movie release requests',async()=>{
+ let firstRelease,finishRelease;const started=new Promise(r=>firstRelease=r),blocked=new Promise(r=>finishRelease=r);let requests=0;
+ const films=Array.from({length:20},(_,i)=>({id:i+1,title:'Film '+i,original_language:'en',release_date:'2026-01-01',genre_ids:[18]}));
+ const {context}=harness({service:'paramount',kind:'movie',api:async path=>{
+  if(path.startsWith('/watch/providers/'))return {results:[{provider_id:2616,provider_name:'Paramount Plus Essential'}]};
+  if(path.startsWith('/discover/'))return {total_pages:1,results:films};
+  if(path.endsWith('/release_dates')){requests++;firstRelease();await blocked;return {results:[]};}
+  return films.find(x=>x.id===Number(path.split('/')[2].split('?')[0]));
+ }});
+ const loading=context.loadCatalog();await started;context.sequence.next();context.catalogController.abort();const atCancel=requests;finishRelease();await loading;assert.equal(requests,atCancel);assert(requests<20);
 });

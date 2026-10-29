@@ -10,7 +10,7 @@ export default async function handler(req,res) {
   for(const [key,value] of url.searchParams)if(params.has(key))target.searchParams.set(key,value);
   if((target.searchParams.get('query')||'').length>200)return res.status(400).json({error:'Search is too long'});
   const page=Number(target.searchParams.get('page')||1);if(!Number.isInteger(page)||page<1||page>500)return res.status(400).json({error:'Invalid page'});
-  if(target.searchParams.has('append_to_response'))target.searchParams.set('append_to_response','credits,keywords');
+  if(target.searchParams.has('append_to_response'))target.searchParams.set('append_to_response',(target.searchParams.get('append_to_response')||'').split(',').filter(x=>['credits','keywords','release_dates'].includes(x)).join(',')||'credits,keywords');
   target.searchParams.set('include_adult','false');
   if(path.startsWith('/discover/'))target.searchParams.set('with_original_language','en');
   try {
