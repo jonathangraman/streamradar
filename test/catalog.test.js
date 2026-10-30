@@ -92,3 +92,16 @@ test('theaters always includes limited releases and their US dates in now and co
   assert(calls.some(x=>x.startsWith('/discover/movie')&&new URLSearchParams(x.split('?')[1]).get('with_release_type')==='2|3'));
  }
 });
+
+test('now in theaters sorts verified US opening dates newest first across loaded pages',async()=>{
+ const today=core.today(),old=core.shiftedDate(today,-7),older=core.shiftedDate(today,-14);
+ const films=[{id:1,title:'Older popular movie',original_language:'en',release_date:'2026-01-01',popularity:100},{id:2,title:'Newest limited movie',original_language:'en',release_date:'2001-01-01',popularity:1},{id:3,title:'Oldest movie',original_language:'en',release_date:today,popularity:200}];
+ const {context}=harness({service:'theaters',type:'movie',kind:'movie',api:async path=>{
+  if(path.startsWith('/watch/providers'))return {results:[]};
+  if(path.startsWith('/discover/'))return {total_pages:1,results:films};
+  const id=Number(path.split('/')[2].split('?')[0]);
+  if(path.endsWith('/release_dates'))return {results:[{iso_3166_1:'US',release_dates:[{type:id===2?2:3,release_date:({1:old,2:today,3:older})[id]}]}]};
+  return films.find(x=>x.id===id);
+ }});
+ await context.loadCatalog();assert.deepEqual(Array.from(context.results,x=>x.id),[2,1,3]);
+});

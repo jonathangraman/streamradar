@@ -1,5 +1,5 @@
 import {buildReleasePlan,movieWindowEvents,formatDigitalQuote,showMovieJourney} from './release-plan.js';
-import {validRating,eligibleCalendarSeries,mergeRemembered,setEpisodeProgress,hasNewEpisodes,filterWatchlist,resolvedEvent,movieStreamingEvents,futureMovieQuery,episodeLabelsAllowed,streamingArrival,streamingArrivalQuery,matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {theaterNewestFirst,validRating,eligibleCalendarSeries,mergeRemembered,setEpisodeProgress,hasNewEpisodes,filterWatchlist,resolvedEvent,movieStreamingEvents,futureMovieQuery,episodeLabelsAllowed,streamingArrival,streamingArrivalQuery,matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 import {mountAccounts,accountState} from './accounts.js';
 import {client as accountClient} from './auth-client.js';
@@ -217,7 +217,7 @@ async function loadCatalog(more=false){
       if(!more&&added.size&&sequence.current(request)){
         const preview=[...added.values()].sort(wanted.when==='soon'
           ?(a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||'')
-          :recentActivityFirst);
+          :wanted.service==='theaters'?theaterNewestFirst:recentActivityFirst);
         $('grid').innerHTML=preview.map(card).join('');
         $('count-lbl').textContent=`Showing ${preview.length} verified titles · finding more…`;
       }
@@ -226,9 +226,9 @@ async function loadCatalog(more=false){
     }
     homeLoaded=true;page=scannedPage;totalPages=lastTotalPages;results=[...new Map([...results,...added.values()].map(x=>[keyOf(x),x])).values()];
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
-    else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
+    else results.sort(wanted.service==='theaters'?theaterNewestFirst:recentActivityFirst);
     $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No verified titles match these filters. Choose Reality & talk in Show, or Full catalog for licensed titles.</div>';
-    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals + new movies · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · limited & wide · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals + new movies · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · limited & wide · newest first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     if(incomplete)$('count-lbl').textContent+=' · Some results unavailable; retry to check all categories';
     $('load-more').hidden=page>=totalPages;
     enrichLabels([...added.values()],request);
