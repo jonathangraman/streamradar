@@ -1,4 +1,5 @@
 import {resolvedEvent,formatDate} from '../core.js';
+import {showMovieJourney} from '../release-plan.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -18,13 +19,14 @@ test('title details place the trailer beside calendar and keep it available for 
  const link=source.slice(source.indexOf('function trailerLink('),source.indexOf('function card('));
  const actions=source.slice(source.indexOf('function renderDetailActions('),source.indexOf('async function loadDetail('));
  const target={};
- const context=vm.createContext({resolvedEvent,formatDate,URLSearchParams,$:()=>target,keyOf:()=> 'movie:161',library:{watchlist:[]},esc:x=>String(x).replaceAll('&','&amp;'),recommending:false,ratingControl:()=>'',today:()=> '2026-01-01',detailItem:{id:161,type:'movie',title:"Ocean's Eleven",date:'2026-12-07'}});
+ const context=vm.createContext({showMovieJourney,resolvedEvent,formatDate,URLSearchParams,$:id=>id==='detail-actions'?target:null,keyOf:()=> 'movie:161',library:{watchlist:[]},esc:x=>String(x).replaceAll('&','&amp;'),recommending:false,ratingControl:()=>'',today:()=> '2026-01-01',detailItem:{id:161,type:'movie',title:"Ocean's Eleven",date:'2026-12-07'}});
  vm.runInContext(link+actions,context);context.renderDetailActions();
- assert.match(target.innerHTML,/<div class="trailer-calendar-actions"><button[^>]+data-action="calendar"[^>]*>Add to calendar<\/button><a/);
+ assert.match(target.innerHTML,/<div class="trailer-calendar-actions">.*<button[^>]+data-action="calendar"[^>]*>Add to calendar<\/button><a/);
  assert.match(target.innerHTML,/href="\/api\/trailer\?type=movie&amp;id=161/);
  assert.match(target.innerHTML,/target="_blank" rel="noopener noreferrer"/);
  context.detailItem.date='2001-12-07';context.renderDetailActions();
  assert.doesNotMatch(target.innerHTML,/data-action="calendar"/);
+ assert.doesNotMatch(target.innerHTML,/data-action="toggle-movie-journey"/);
  assert.match(target.innerHTML,/class="btn-ico trailer-button"/);
 });
 test('movie and series links open official English YouTube trailers and cache successful redirects',async()=>{
