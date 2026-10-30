@@ -68,7 +68,7 @@ export function recentActivityFirst(a,b){return activityDate(b).localeCompare(ac
 export function normalizeZip(value){const zip=typeof value==='string'?value.trim():'';return /^\d{5}$/.test(zip)&&zip!=='00000'?zip:'';}
 export function theaterURL(value){const zip=normalizeZip(value);return zip?'https://www.fandango.com/'+zip+'_movietimes':'';}
 export const networkIds={food:'143',discovery:'64'};
-export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67',max:'49|3186',starz:'318',mgm:'6219|922'};
+export const originalNetworks={apple:'2552',netflix:'213',prime:'1024',disney:'2739|453',peacock:'3353',paramount:'4330|67|6631',max:'49|3186',starz:'318',mgm:'6219|922'};
 // Network affiliations identify series; movie premieres need separate release evidence.
 export const originalsOnlyServices=Object.keys(originalNetworks);
 export const originalMovieServices=originalsOnlyServices;
@@ -291,7 +291,7 @@ export function matchesBrowseGenre(item,genre){const f=browseGenreFilter(genre,i
 // Sources: official Prime title page and Netflix Tudum/title page, verified 2026-10-09. Never infer US offers from a network alone.
 // Dracula availability/date: https://www.paramountplus.com/sneak-peak/where-to-watch-luc-besson-dracula/
 // The Mosquito Bowl: Netflix announcement checked 2026-10-30; include even when discovery ranks it beyond the initial page.
-export const verifiedUSOffers=[{id:1458300,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-11-25',reviewUntil:'2026-12-25',url:'https://www.netflix.com/title/81661161',source:'https://www.netflix.com/tudum/articles/the-mosquito-bowl'},{id:1246049,type:'movie',service:'paramount',provider_id:2616,provider_name:'Paramount Plus Essential',start:'2026-10-12',reviewUntil:'2026-11-28',url:'https://www.paramountplus.com/movies/video/ALVE01M0GJZY0XEXQ8H80T4YJ77ANF/',source:'https://www.paramountplus.com/sneak-peak/where-to-watch-luc-besson-dracula/'},{id:1236045,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-09',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81757047',source:'https://media.netflix.com/en/only-on-netflix/81757047'},{id:285322,type:'tv',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-08',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81652677',source:'https://www.netflix.com/tudum/below'},{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
+export const verifiedUSOffers=[{id:259909,type:'tv',season:2,service:'paramount',provider_id:2303,provider_name:'Paramount Plus Premium',start:'2026-10-30',reviewUntil:'2026-11-30',url:'https://www.paramountplus.com/shows/dexter-resurrection/',source:'https://cms-corp.paramount.com/news/dexterr-resurrection-is-back-and-the-stakes-are-killer'},{id:1458300,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-11-25',reviewUntil:'2026-12-25',url:'https://www.netflix.com/title/81661161',source:'https://www.netflix.com/tudum/articles/the-mosquito-bowl'},{id:1246049,type:'movie',service:'paramount',provider_id:2616,provider_name:'Paramount Plus Essential',start:'2026-10-12',reviewUntil:'2026-11-28',url:'https://www.paramountplus.com/movies/video/ALVE01M0GJZY0XEXQ8H80T4YJ77ANF/',source:'https://www.paramountplus.com/sneak-peak/where-to-watch-luc-besson-dracula/'},{id:1236045,type:'movie',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-09',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81757047',source:'https://media.netflix.com/en/only-on-netflix/81757047'},{id:285322,type:'tv',service:'netflix',provider_id:8,provider_name:'Netflix',start:'2026-10-08',reviewUntil:'2026-11-08',url:'https://www.netflix.com/title/81652677',source:'https://www.netflix.com/tudum/below'},{id:288673,type:'tv',service:'prime',provider_id:9,provider_name:'Amazon Prime Video',start:'2026-10-07',reviewUntil:'2026-11-07',url:'https://www.primevideo.com/detail/0QHLPZ8O1W9VTEDNG03QCGAPI2'}];
 export function activeVerifiedOffers(now=today()){return verifiedUSOffers.filter(x=>x.start<=now&&now<=x.reviewUntil);}
 export function withVerifiedUSOffers(item,offers={},now=today()){
  const verified=activeVerifiedOffers(now).filter(x=>keyOf(x)===keyOf(item));
@@ -379,3 +379,15 @@ export function futureMovieQuery(options={},now=today()){
 }
 
 export function eligibleCalendarSeries(item,saved=false){return saved||(matchesOriginalSeries(item,'all')&&matchesReality(item,'exclude'));}
+
+// Correct only an officially announced US streaming premiere. Later episodes
+// retain their source dates; a premiere never proves a whole-season release.
+export function correctUSSeriesRelease(data,path,now=today()){
+ const match=/^\/tv\/(\d+)(?:\/season\/(\d+))?$/.exec(path);if(!match)return data;
+ const entry=verifiedUSOffers.find(x=>x.type==='tv'&&x.season&&x.id===Number(match[1])&&now<=x.reviewUntil);if(!entry)return data;
+ const correct=ep=>ep?.season_number===entry.season&&ep.episode_number===1?{...ep,air_date:entry.start,releaseSource:entry.source}:ep;
+ if(match[2])return Number(match[2])===entry.season?{...data,air_date:entry.start,episodes:(data.episodes||[]).map(ep=>correct({...ep,season_number:entry.season}))}:data;
+ const out={...data,seasons:(data.seasons||[]).map(s=>s.season_number===entry.season?{...s,air_date:entry.start,releaseSource:entry.source}:s),last_episode_to_air:correct(data.last_episode_to_air),next_episode_to_air:correct(data.next_episode_to_air),usSeasonPremiere:{date:entry.start,season:entry.season,service:entry.service,source:entry.source}};
+ if(out.next_episode_to_air?.season_number===entry.season&&out.next_episode_to_air.episode_number===1&&entry.start<=now&&(out.last_episode_to_air?.season_number||0)<entry.season){out.last_episode_to_air=out.next_episode_to_air;out.next_episode_to_air=null;}
+ return out;
+}

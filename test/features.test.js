@@ -53,3 +53,12 @@ test('Mosquito Bowl is seeded for upcoming Netflix but never offered before its 
  assert(activeVerifiedOffers('2026-11-25').some(x=>x.id===item.id));
  assert(!scheduledVerifiedReleases('2026-12-26').some(x=>x.id===item.id));
 });
+
+test('Paramount Showtime originals include Resurrection and its sourced US premiere without a batch-release claim',async()=>{
+ const {matchesOriginalSeries,catalogQuery,correctUSSeriesRelease,activeVerifiedOffers,activityDate,contentLabels,releaseMilestone}=await import('../core.js');
+ const raw={id:259909,type:'tv',date:'2025-07-13',networks:[{id:6631}],seasons:[{season_number:1,air_date:'2025-07-13',episode_count:10},{season_number:2,air_date:'2026-11-01',episode_count:10}],last_episode_to_air:{season_number:1,episode_number:10,air_date:'2025-09-07'},next_episode_to_air:{season_number:2,episode_number:1,air_date:'2026-11-01'}};
+ assert(matchesOriginalSeries(raw,'paramount'));assert(!matchesOriginalSeries(raw,'prime'));assert(catalogQuery({service:'paramount',type:'tv'}).get('with_networks').split('|').includes('6631'));
+ const corrected=correctUSSeriesRelease(raw,'/tv/259909','2026-10-30');assert.equal(corrected.seasons[1].air_date,'2026-10-30');assert.equal(corrected.last_episode_to_air.season_number,2);assert.equal(corrected.last_episode_to_air.episode_number,1);assert.equal(corrected.next_episode_to_air,null);assert.equal(activityDate(corrected,'2026-10-30'),'2026-10-30');assert(contentLabels(corrected,'2026-10-30').some(x=>x.text==='SEASON PREMIERE'));assert.equal(releaseMilestone(corrected,'2026-10-30'),null);
+ const season={episodes:[{episode_number:1,air_date:'2026-11-01'},{episode_number:2,air_date:'2026-11-08'}]};const fixed=correctUSSeriesRelease(season,'/tv/259909/season/2','2026-10-30');assert.equal(fixed.episodes[0].air_date,'2026-10-30');assert.equal(fixed.episodes[1].air_date,'2026-11-08');assert.equal(season.episodes[0].air_date,'2026-11-01');
+ assert.equal(correctUSSeriesRelease(raw,'/tv/259909','2026-12-01'),raw);assert.equal(correctUSSeriesRelease(raw,'/tv/1405','2026-10-30'),raw);assert(activeVerifiedOffers('2026-10-30').some(x=>x.id===259909));
+});

@@ -440,7 +440,7 @@ async function loadStreamingCalendar(reset=true){
   const movieQuery=futureMovieQuery({page:nextPage});
   const [movieData,theaterData,soonTheaterData]=await Promise.all([api('/discover/movie?'+movieQuery),api('/discover/movie?'+catalogQuery({service:'theaters',when:'now',kind:'movie',page:nextPage})),api('/discover/movie?'+catalogQuery({service:'theaters',when:'soon',kind:'movie',page:nextPage}))]);
   if(run!==calendarRun||epoch!==accountState.epoch)return;calendarTotalPages=Math.min(Math.max(movieData.total_pages||1,theaterData.total_pages||1,soonTheaterData.total_pages||1),500);
-  const corrections=scheduledVerifiedReleases(),savedMovies=reset?[...library.watchlist,...library.seen].filter(x=>x.type==='movie'):[];
+  const corrections=[...scheduledVerifiedReleases(),...activeVerifiedOffers().filter(x=>x.season)],savedMovies=reset?[...library.watchlist,...library.seen].filter(x=>x.type==='movie'):[];
   const candidates=[...new Map([...[...(movieData.results||[]),...(theaterData.results||[]),...(soonTheaterData.results||[])].map(x=>normalize(x,'movie')),...savedMovies,...corrections.filter(x=>x.type==='movie')].map(x=>[keyOf(x),x])).values()];let failed=0;
   await mapLimit(candidates,4,async candidate=>{
    if(run!==calendarRun||epoch!==accountState.epoch)return;
@@ -459,10 +459,11 @@ async function loadStreamingCalendar(reset=true){
     try{const item=normalize(await api('/tv/'+candidate.id),'tv');if(run!==calendarRun||epoch!==accountState.epoch||!isEnglish(item)||!eligibleCalendarSeries(item,tracked.some(x=>keyOf(x)===keyOf(item))))return;
      const affiliation=serviceDefinitions.find(s=>!['all','theaters'].includes(s.id)&&matchesOriginalSeries(item,s.id))?.id;
      const source='TMDB episode air date; streaming availability may vary';
+     if(item.usSeasonPremiere)addCalendarEntry(item,{...item.usSeasonPremiere,kind:'season',label:'Season '+item.usSeasonPremiere.season+' premiere'});
      const next=item.next_episode_to_air;if(next?.air_date)addCalendarEntry(item,{date:next.air_date,kind:'episode',season:next.season_number,episode:next.episode_number,label:`S${next.season_number} E${next.episode_number} · ${next.name||'Episode'}`,service:affiliation,source});
      const premiere=upcomingPremiere(item);if(premiere)addCalendarEntry(item,{date:premiere.date,kind:'season',season:premiere.season,label:'Season '+premiere.season+' premiere',service:affiliation,source:'TMDB season air date; streaming availability may vary'});
      const seasons=[...new Set([next?.season_number,premiere?.season])].filter(n=>n>0);
-     for(const season of seasons){const data=await api(`/tv/${item.id}/season/${season}`);if(run!==calendarRun||epoch!==accountState.epoch)return;for(const ep of data.episodes||[])if(ep.episode_number>0)addCalendarEntry(item,{date:ep.air_date,kind:'episode',season,episode:ep.episode_number,label:`S${season} E${ep.episode_number} · ${ep.name||'Episode'}`,service:affiliation,source});}
+     for(const season of seasons){const data=await api(`/tv/${item.id}/season/${season}`);if(run!==calendarRun||epoch!==accountState.epoch)return;for(const ep of data.episodes||[])if(ep.episode_number>0)addCalendarEntry(item,{date:ep.air_date,kind:'episode',season,episode:ep.episode_number,label:`S${season} E${ep.episode_number} · ${ep.name||'Episode'}`,service:affiliation,source:ep.releaseSource||source});}
     }catch{failed++;}
    });
   }
