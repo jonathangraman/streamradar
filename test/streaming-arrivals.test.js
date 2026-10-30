@@ -40,3 +40,11 @@ test('Prime and Apple arrivals require subscription names rather than their rent
  assert.equal(streamingArrival(item('Amazon Prime Video'),'prime',now),'2026-10-12');
  assert.equal(streamingArrival(item('Apple TV+'),'apple',now),'2026-10-12');
 });
+
+test('Nocturne official availability fills the missing US Apple subscription feed without admitting the unrelated movie',()=>{
+ const series={id:292741,type:'tv',original_language:'en',networks:[{id:2552}]};
+ assert.equal(withVerifiedUSOffers(series,{},'2026-10-29').flatrate.length,0);
+ assert.equal(withVerifiedUSOffers(series,{},'2026-10-30').flatrate[0].provider_id,350);
+ assert.equal(withVerifiedUSOffers({...series,type:'movie'},{},'2026-10-30').flatrate.length,0);
+ assert.equal(withVerifiedUSOffers(series,{},'2026-12-01').flatrate.length,0);
+});
