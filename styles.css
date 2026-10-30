@@ -355,3 +355,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .rating-star-empty{text-align:center}.rating-star-fill>span{display:block;width:48px;text-align:center}
 
 .wl-card-wrap{min-width:0}.wl-card-wrap .card{min-width:0}.wl-card-wrap>.wl-rating-button{font-size:12px;margin-top:6px}.wl-card-wrap>.data-note{font-size:10px;line-height:1.4;margin-top:6px}.wl-card-wrap>.text-button{overflow-wrap:anywhere}@media(max-width:500px){#wl-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.wl-card-wrap .card{border-radius:10px}.wl-card-wrap .card-body{min-height:54px;padding:7px 6px}.wl-card-wrap>.text-button{font-size:11px;padding:7px 4px}}
+
+/* Keep the watchlist header, filters, and tiles in one scrolling surface. */
+#v-watchlist{display:block;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:calc(100px + var(--safe-bottom))}#v-watchlist>.grid-wrap{overflow:visible;padding-bottom:20px}

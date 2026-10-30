@@ -43,6 +43,7 @@ await page.getByRole('button',{name:'Add to watchlist',exact:true}).click();
 await page.getByRole('button',{name:'WATCHLIST',exact:true}).click();
 await page.locator('#wl-search').fill('Review');assert.equal(await page.locator('#wl-grid .card').count(),1);
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);assert((await page.locator('#wl-grid .card').first().boundingBox()).width<150);await page.screenshot({path:'/tmp/streamradar-watchlist-mobile.png',fullPage:true});
+const watchlistHeaderTop=(await page.locator('#v-watchlist .wl-hdr').boundingBox()).y;await page.locator('#v-watchlist').evaluate(el=>{el.scrollTop=160;});assert((await page.locator('#v-watchlist .wl-hdr').boundingBox()).y<watchlistHeaderTop-50);await page.locator('#v-watchlist').evaluate(el=>{el.scrollTop=0;});
 await page.locator('#wl-type').selectOption('movie');assert.equal(await page.locator('#wl-grid .card').count(),0);
 await page.locator('#wl-type').selectOption('tv');assert.equal(await page.locator('#wl-grid .card').count(),1);
 await page.locator('#wl-grid .card').click();await page.locator('[data-episode="1:1"]').waitFor();assert(await page.locator('[data-episode="1:1"]').isChecked());
