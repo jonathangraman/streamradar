@@ -11,6 +11,12 @@ const destinationRules=[
  {service:'peacock',minYear:2026,companies:['Universal Pictures','Focus Features','DreamWorks Animation','Illumination'],source:'https://www.nbcuniversal.com/article/peacock-showcases-powerhouse-slate-todays-nbcuniversal-upfront',reviewed:'2026-10-29',reviewUntil:'2027-01-27',basis:'NBCUniversal first streaming window; studio credit does not prove distribution rights for this title.'},
  {service:'netflix',minYear:2022,companies:['Columbia Pictures','TriStar Pictures','Screen Gems','Sony Pictures Animation','Sony Pictures'],source:'https://www.sonypictures.com/corp/press_releases/2026/0115',reviewed:'2026-10-29',reviewUntil:'2027-01-27',basis:'Sony/Netflix US first subscription window; studio credit does not prove distribution rights for this title.'}
 ];
+// The release journey is useful during a film's initial release window.
+// New subscription deals and theatrical reissues do not make an old film new.
+export function showMovieJourney(item,now=today()){
+ const date=item.release_date||item.date;
+ return (item.type||item.media_type)==='movie'&&validDate(date)&&date>=shiftedDate(now,-180);
+}
 export function buildReleasePlan(item,now=today()){
  const releases=(item.release_dates?.results||[]).find(x=>x.iso_3166_1==='US')?.release_dates||[];
  const theaterDates=[...new Set(releases.filter(x=>[2,3].includes(x.type)&&validDate(x.release_date?.slice(0,10))).map(x=>x.release_date.slice(0,10)))].sort();

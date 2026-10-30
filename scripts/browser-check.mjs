@@ -8,7 +8,7 @@ if(!process.env.BASE_URL){server=spawn(process.execPath,['scripts/dev-server.js'
 process.on('exit',()=>server?.kill());
 const now=new Date(),day=offset=>{const d=new Date(now);d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10);};
 const movie={id:1246049,type:'movie',title:'Dracula',original_language:'fr',release_date:'2025-07-30',genre_ids:[27],genres:[{id:27,name:'Horror'}],vote_average:7.3,runtime:130};
-const upcoming={id:2,type:'movie',title:'Upcoming Test Film',original_language:'en',release_date:'2025-01-01',genre_ids:[18],genres:[{id:18,name:'Drama'}]};
+const upcoming={id:2,type:'movie',title:'Upcoming Test Film',original_language:'en',release_date:day(-30),genre_ids:[18],genres:[{id:18,name:'Drama'}]};
 const show={id:42,type:'tv',name:'Review Series',title:'Review Series',original_language:'en',first_air_date:'2020-01-01',genre_ids:[18],genres:[{id:18,name:'Drama'}],networks:[{id:4330}],seasons:[{season_number:1,air_date:'2020-01-01',episode_count:2},{season_number:2,air_date:day(7),episode_count:1}],last_episode_to_air:{season_number:1,episode_number:2,air_date:day(-1)},next_episode_to_air:{season_number:2,episode_number:1,air_date:day(7),name:'New season'}};
 const dates=id=>({results:[{iso_3166_1:'US',release_dates:[{type:3,release_date:'2025-01-01',note:''},{type:4,release_date:id===2?day(14):day(-10),note:'Paramount+'}]}]});
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{}),args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
