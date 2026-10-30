@@ -42,6 +42,7 @@ await page.locator('[data-episode="1:1"]').check();
 await page.getByRole('button',{name:'Add to watchlist',exact:true}).click();
 await page.getByRole('button',{name:'WATCHLIST',exact:true}).click();
 await page.locator('#wl-search').fill('Review');assert.equal(await page.locator('#wl-grid .card').count(),1);
+assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);assert((await page.locator('#wl-grid .card').first().boundingBox()).width<150);await page.screenshot({path:'/tmp/streamradar-watchlist-mobile.png',fullPage:true});
 await page.locator('#wl-type').selectOption('movie');assert.equal(await page.locator('#wl-grid .card').count(),0);
 await page.locator('#wl-type').selectOption('tv');assert.equal(await page.locator('#wl-grid .card').count(),1);
 await page.locator('#wl-grid .card').click();await page.locator('[data-episode="1:1"]').waitFor();assert(await page.locator('[data-episode="1:1"]').isChecked());
@@ -69,7 +70,7 @@ const second=await context.newPage();await Promise.all([page.goto(base+'/#detail
 await Promise.all([page.getByRole('button',{name:'Add to watchlist',exact:true}).waitFor(),second.getByRole('button',{name:'Add to watchlist',exact:true}).waitFor()]);
 await Promise.all([page.getByRole('button',{name:'Add to watchlist',exact:true}).click(),second.getByRole('button',{name:'Add to watchlist',exact:true}).click()]);
 await page.getByRole('button',{name:'WATCHLIST',exact:true}).click();await page.locator('#wl-search').fill('');await page.locator('#wl-type').selectOption('all');
-assert.equal(await page.locator('#wl-grid [data-key="movie:3"][data-action="detail"]').count(),1);assert.equal(await page.locator('#wl-grid [data-key="movie:4"][data-action="detail"]').count(),1);
+assert.equal(await page.locator('#wl-grid .card[data-key="movie:3"][data-action="detail"]').count(),1);assert.equal(await page.locator('#wl-grid .card[data-key="movie:4"][data-action="detail"]').count(),1);
 await page.getByRole('button',{name:'UPCOMING',exact:true}).click();await page.locator('#calendar-month').selectOption(day(14).slice(0,7));
 assert.equal(await page.getByRole('button',{name:'UPCOMING',exact:true}).getAttribute('aria-current'),'page');
 await page.screenshot({path:'/tmp/streamradar-upcoming-mobile.png',fullPage:true});
