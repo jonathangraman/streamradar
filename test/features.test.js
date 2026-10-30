@@ -41,3 +41,15 @@ test('calendar discovery hides syndicated broadcast and talk series unless expli
  const talk={type:'tv',first_air_date:'2020-01-01',networks:[{id:213}],genres:[{id:10767}]};
  assert.equal(eligibleCalendarSeries(soap),false);assert.equal(eligibleCalendarSeries(talk),false);assert.equal(eligibleCalendarSeries(soap,true),true);assert.equal(eligibleCalendarSeries({...talk,genres:[{id:18}]}),true);
 });
+
+// Discovery may rank a confirmed release beyond the initially fetched pages.
+test('Mosquito Bowl is seeded for upcoming Netflix but never offered before its streaming debut',async()=>{
+ const {scheduledVerifiedReleases,activeVerifiedOffers}=await import('../core.js');
+ const item={id:1458300,type:'movie'};
+ assert(scheduledVerifiedReleases('2026-10-30').some(x=>x.id===item.id&&x.service==='netflix'));
+ assert(!activeVerifiedOffers('2026-10-30').some(x=>x.id===item.id));
+ assert.deepEqual(movieStreamingEvents(item,'netflix','2026-10-30').map(x=>[x.date,x.service]),[['2026-11-25','netflix']]);
+ assert.equal(movieStreamingEvents(item,'paramount','2026-10-30').length,0);
+ assert(activeVerifiedOffers('2026-11-25').some(x=>x.id===item.id));
+ assert(!scheduledVerifiedReleases('2026-12-26').some(x=>x.id===item.id));
+});

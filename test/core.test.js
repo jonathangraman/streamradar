@@ -203,7 +203,7 @@ test('browse genre filters map movie genres and TV keywords across current and f
 });
 test('verified US corrections are title-specific, dated and do not duplicate upstream offers',()=>{
  const item={type:'tv',id:288673},now='2026-10-08';
- assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-11-29').length,0);
+ assert.equal(activeVerifiedOffers('2026-10-06').length,0);assert.equal(activeVerifiedOffers('2026-12-26').length,0);
  assert.equal(withVerifiedUSOffers(item,{},now).flatrate[0].provider_name,'Amazon Prime Video');
  assert.equal(withVerifiedUSOffers({type:'movie',id:288673},{},now).flatrate.length,0);
  assert.equal(withVerifiedUSOffers(item,{flatrate:[{provider_id:9,provider_name:'Amazon Prime Video'}]},now).flatrate.length,1);
