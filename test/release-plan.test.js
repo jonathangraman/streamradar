@@ -24,8 +24,8 @@ test('store lookup disambiguates title/year/runtime and only accepts a US Apple 
  assert.equal(selectStoreMovie(film,[store,{...store}]),null);
 });
 test('rental and purchase quotes stay separate; missing and invalid prices never become invented zero-dollar offers',()=>{
- const quote=storeQuote(film,store,'2026-10-29T12:00:00Z');assert.match(formatDigitalQuote(quote),/Rent from \$19.99/);assert.match(formatDigitalQuote(quote),/Buy from \$24.99/);
- const buyOnly=storeQuote(film,{...store,trackRentalPrice:-1,trackHdRentalPrice:0});assert(!formatDigitalQuote(buyOnly).includes('Rent'));assert.equal(buyOnly.rent.length,0);
+ const quote=storeQuote(film,store,'2026-10-29T12:00:00Z');assert.match(formatDigitalQuote(quote),/Rent from \$19.99/);assert.doesNotMatch(formatDigitalQuote(quote),/Buy from/);
+ const buyOnly=storeQuote(film,{...store,trackRentalPrice:-1,trackHdRentalPrice:0});assert.equal(formatDigitalQuote(buyOnly),'Rental price unavailable');assert.equal(buyOnly.rent.length,0);
  assert.match(formatDigitalQuote({matched:false}),/not announced/);assert.match(formatDigitalQuote({matched:false,status:'unavailable'}),/unavailable/);
 });
 function response(){return {headers:{},setHeader(k,v){this.headers[k]=v;},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};}

@@ -33,11 +33,11 @@ export function buildReleasePlan(item,now=today()){
 export function movieWindowEvents(item,now=today()){
  const plan=buildReleasePlan(item,now),end=shiftedDate(now,90),events=[];
  if(plan.theaterDate>=now&&plan.theaterDate<=end)events.push({date:plan.theaterDate,kind:'theater',service:'theaters',label:'US theatrical release',source:'TMDB US theatrical release date'});
- for(const date of plan.digitalDates.filter(d=>d>=now&&d<=end))events.push({date,kind:'digital',service:'digital',label:'Digital release · rental / purchase window',source:'TMDB US digital release; rental/purchase availability and prices require store confirmation'});
+ for(const date of plan.digitalDates.filter(d=>d>=now&&d<=end))events.push({date,kind:'digital',service:'digital',label:'Digital release · rental availability unconfirmed',source:'TMDB US digital release; rental availability and prices require store confirmation'});
  return events;
 }
 export function formatDigitalQuote(quote){
  if(!quote?.matched)return quote?.status==='unavailable'?'Price lookup unavailable':'Price not announced or no matching US store listing';
- const prices=[];if(quote.rent?.length)prices.push('Rent from $'+Math.min(...quote.rent.map(x=>x.amount)).toFixed(2));if(quote.buy?.length)prices.push('Buy from $'+Math.min(...quote.buy.map(x=>x.amount)).toFixed(2));
- return prices.join(' · ')||'Rental / purchase prices unavailable';
+ const prices=[];if(quote.rent?.length)prices.push('Rent from $'+Math.min(...quote.rent.map(x=>x.amount)).toFixed(2));
+ return prices.join(' · ')||'Rental price unavailable';
 }
