@@ -41,6 +41,11 @@ test('real PostgreSQL policies isolate two users and reject anonymous access and
   await asUser(b);assert.equal((await db.query('select public.claim_ai_pick() as allowed')).rows[0].allowed,false);
   await asUser(a);
   await assert.rejects(db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{...patch[0],expected_user:a,state:{rating:9}}])]),/valid_state/);
+  for(const rating of [0.5,1,1.5,2,2.5,3,3.5,4,4.5,5]){
+   await db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{...patch[0],expected_user:a,state:{rating}}])]);
+   assert.equal((await db.query("select state->'rating' as rating from public.library_entries where media_type='movie' and tmdb_id=1")).rows[0].rating,rating);
+  }
+  for(const rating of [0,0.25,3.25,5.5,'4.5'])await assert.rejects(db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{...patch[0],expected_user:a,state:{rating}}])]),/valid_state/);
   await db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{media_type:'tv',tmdb_id:42,expected_user:a,item:{id:42,type:'tv',title:'Progress'},state:{tracking:true,ep_1_1:true}}])]);
   await db.query('select public.sync_library_entries($1::jsonb)',[JSON.stringify([{media_type:'tv',tmdb_id:42,expected_user:a,state:{ep_1_2:true}}])]);
   assert.deepEqual((await db.query('select state from public.library_entries where media_type=\'tv\' and tmdb_id=42')).rows[0].state,{tracking:true,ep_1_1:true,ep_1_2:true});

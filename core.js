@@ -222,6 +222,7 @@ export function matchesPick(item,media,genre){
   if(keyword)return (genre!=='indie'||item.type==='movie')&&(item.keywords?.keywords||item.keywords?.results||[]).some(k=>k.id===keyword);
   return pickGenreIds(genre,item.type).split('|').some(id=>(item.genre_ids||item.genres?.map(g=>g.id)||[]).includes(Number(id)));
 }
+export const validRating=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0.5&&value<=5&&Number.isInteger(value*2);
 export function emptyLibrary() { return {version:2,watchlist:[],seen:[],ratings:{},recs:[],dismissed:[],progress:{},legacyImported:false}; }
 export function migrateLegacy(watchlist=[], seen=[], ratings={}) {
   const state=emptyLibrary();
@@ -231,7 +232,7 @@ export function migrateLegacy(watchlist=[], seen=[], ratings={}) {
     // A legacy numeric rating is ambiguous when both media types share the ID.
     const types=new Set([...state.watchlist,...state.seen].filter(x=>x.id===item.id).map(x=>x.type));
     const value=ratings[keyOf(item)] ?? (types.size===1 ? ratings[item.id] : undefined);
-    if(Number.isInteger(value) && value>=1 && value<=5) state.ratings[keyOf(item)]=value;
+    if(validRating(value)) state.ratings[keyOf(item)]=value;
   }
   return state;
 }
@@ -245,7 +246,7 @@ export function updateLibrary(state, action, item, stars) {
     next.seen=next.seen.filter(x=>keyOf(x)!==key);next.seen.push({...valid,seenAt:new Date().toISOString()});
     next.recs=next.recs.filter(x=>keyOf(x)!==key);
     if(action==='rate') {
-      if(!Number.isInteger(stars)||stars<1||stars>5)throw new Error('Choose a rating from one to five.');
+      if(!validRating(stars))throw new Error('Choose a rating from 0.5 to 5 in half-star steps.');
       next.ratings[key]=stars;
     }
   } else if(action==='remove-seen') next.seen=next.seen.filter(x=>keyOf(x)!==key);
@@ -304,13 +305,13 @@ export function recommendationSeeds(library,media='all'){
  const unique=[...new Map([...library.seen,...library.watchlist].map(x=>[keyOf(x),x])).values()].filter(x=>media==='all'||x.type===media);
  const rated=unique.filter(x=>library.ratings[keyOf(x)]>=4).sort((a,b)=>library.ratings[keyOf(b)]-library.ratings[keyOf(a)]).slice(0,4);
  const interested=library.watchlist.slice().reverse().filter(x=>(media==='all'||x.type===media)&&!library.ratings[keyOf(x)]&&!(library.dismissed||[]).includes(keyOf(x))).slice(0,2);
- return [...new Map([...rated,...interested].map(x=>[keyOf(x),{...x,seedWeight:library.ratings[keyOf(x)]===5?5:library.ratings[keyOf(x)]===4?3:1.5,seedReason:library.ratings[keyOf(x)]>=4?'rated':'watchlist'}])).values()];
+ return [...new Map([...rated,...interested].map(x=>[keyOf(x),{...x,seedWeight:library.ratings[keyOf(x)]>=4?2*library.ratings[keyOf(x)]-5:1.5,seedReason:library.ratings[keyOf(x)]>=4?'rated':'watchlist'}])).values()];
 }
 export function tasteProfile(library){
  const weights={};
  for(const item of new Map([...library.watchlist,...library.seen].map(x=>[keyOf(x),x])).values()){
   const rating=library.ratings[keyOf(item)],dismissed=(library.dismissed||[]).includes(keyOf(item));
-  const weight=dismissed?-2:rating===5?3:rating===4?2:rating<=2?-3:!rating&&library.watchlist.some(x=>keyOf(x)===keyOf(item))?0.75:0;
+  const weight=dismissed?-2:rating>=4?rating-2:rating<=2?-3:!rating&&library.watchlist.some(x=>keyOf(x)===keyOf(item))?0.75:0;
   for(const genre of item.genre_ids||item.genres?.map(g=>g.id)||[]){const key=item.type+':'+genre;weights[key]=(weights[key]||0)+weight;}
  }
  return weights;

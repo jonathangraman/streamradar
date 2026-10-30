@@ -1,4 +1,4 @@
-import {emptyLibrary,keyOf,normalize} from './core.js';
+import {emptyLibrary,keyOf,normalize,validRating} from './core.js';
 import {readOperations,appendOperation,mergePatches,queuedPatches,operationExtras,acknowledgeOperations,withSyncLock} from './library-store.js';
 
 const fields=['watchlisted','seen','rating','dismissed','tracking'];
@@ -37,7 +37,7 @@ export function recordsToLibrary(rows,pending={},local=emptyLibrary()){
     const item=row.item?normalize(row.item,row.media_type):null,state=row.state||{};
     if(item&&state.watchlisted)library.watchlist.push(item);
     if(item&&state.seen)library.seen.push(item);
-    if(Number.isInteger(state.rating)&&state.rating>=1&&state.rating<=5)library.ratings[key]=state.rating;
+    if(validRating(state.rating))library.ratings[key]=state.rating;
     if(state.dismissed)library.dismissed.push(key);
     if(item&&row.media_type==='tv'&&(state.tracking||Object.keys(state).some(k=>k.startsWith('ep_'))))library.progress[key]={item,tracking:state.tracking===true,episodes:Object.fromEntries(Object.entries(state).filter(([k])=>/^ep_[1-9]\d*_[1-9]\d*$/.test(k)).map(([k,v])=>[k.slice(3).replace('_',':'),v===true]))};
   }

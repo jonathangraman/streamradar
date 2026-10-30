@@ -69,3 +69,20 @@ test('individual episode patches survive cloud sync and merge across devices',as
  assert.deepEqual(cloud.library.progress['tv:10'].episodes,{'1:1':true,'1:2':true});
  cloud.save(setEpisodeProgress(cloud.library,show,[{season_number:1,episode_number:1,air_date:'2020-01-01'}],false));await cloud.sync();assert.equal(client.db.get('a:tv:10').state.ep_1_1,false);assert.equal(client.db.get('a:tv:10').state.ep_1_2,true);
 });
+
+test('half-star ratings survive guest migration, queued sync, reload and backup JSON',async()=>{
+ const {migrateLegacy,validRating}=await import('../core.js');
+ for(const stars of [0.5,1,1.5,2,2.5,3,3.5,4,4.5,5]){
+  const library=updateLibrary(emptyLibrary(),'rate',film(1),stars);
+  assert.equal(library.ratings['movie:1'],stars);
+  const patches=libraryChanges(emptyLibrary(),library);
+  assert.equal(patches['movie:1'].state.rating,stars);
+  const restored=recordsToLibrary([],JSON.parse(JSON.stringify(patches)));
+  assert.equal(restored.ratings['movie:1'],stars);
+  assert.equal(migrateLegacy([],JSON.parse(JSON.stringify(library.seen)),library.ratings).ratings['movie:1'],stars);
+ }
+ for(const stars of [0,0.25,3.25,5.5,NaN,Infinity,'4.5',null]){assert(!validRating(stars));assert.throws(()=>updateLibrary(emptyLibrary(),'rate',film(1),stars));}
+ const library=emptyLibrary();library.seen=[film(1),film(2)];library.ratings={'movie:1':4.5,'movie:2':4};
+ assert(recommendationSeeds(library)[0].seedWeight>recommendationSeeds(library)[1].seedWeight);
+ assert(tasteProfile(library)['movie:18']>4);
+});
