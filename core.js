@@ -148,7 +148,7 @@ export function shiftedDate(now,days){const d=new Date(now+'T12:00:00Z');d.setUT
 export function catalogQuery({type='movie',service='all',when='now',network='all',kind='all',genre='all',page=1,ids=[],scope='originals',reality='exclude'},now=today()){
   const params=new URLSearchParams({language:'en-US',with_original_language:'en',page});
   if(service==='theaters'){
-    params.set('region','US');params.set('with_release_type','3');
+    params.set('region','US');params.set('with_release_type','2|3');
     params.set('release_date.gte',shiftedDate(now,when==='soon'?1:-42));params.set('release_date.lte',shiftedDate(now,when==='soon'?90:0));
     // Date-only ranking buries recognized releases behind low-information entries.
     // Select popular theatrical candidates, then order them by verified US date in the UI.

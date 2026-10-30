@@ -76,3 +76,19 @@ test('cancelling a catalog run stops the remaining queued movie release requests
  }});
  const loading=context.loadCatalog();await started;context.sequence.next();context.catalogController.abort();const atCancel=requests;finishRelease();await loading;assert.equal(requests,atCancel);assert(requests<20);
 });
+
+test('theaters always includes limited releases and their US dates in now and coming soon',async()=>{
+ for(const when of ['now','soon']){
+  const date=core.shiftedDate(core.today(),when==='now'?0:7);
+  const film={id:1458300,title:'The Mosquito Bowl',original_language:'en',release_date:'2026-10-29',genre_ids:[18]};
+  const {context,calls}=harness({service:'theaters',type:'movie',kind:'movie',when,api:async path=>{
+   if(path.startsWith('/watch/providers'))return {results:[]};
+   if(path.startsWith('/discover/movie'))return {total_pages:1,results:new URLSearchParams(path.split('?')[1]).get('with_release_type')==='2'?[film]:[]};
+   if(path.endsWith('/release_dates'))return {results:[{iso_3166_1:'US',release_dates:[{type:2,release_date:date+'T00:00:00Z'}]}]};
+   return film;
+  }});
+  await context.loadCatalog();
+  assert.equal(context.results.length,1);assert.equal(context.results[0].id,1458300);assert.equal(context.results[0].theaterDate,date);
+  assert(calls.some(x=>x.startsWith('/discover/movie')&&new URLSearchParams(x.split('?')[1]).get('with_release_type')==='2|3'));
+ }
+});

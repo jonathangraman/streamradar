@@ -131,6 +131,12 @@ async function loadCatalog(more=false){
         if(wanted.service!=='theaters'&&!ids.length)throw new Error('This service is not currently listed in the US provider catalog.');
         const params=catalogQuery({...wanted,type:media,ids});
         const data=await catalogApi(`/discover/${media}?${params}`);
+        if(wanted.service==='theaters'){
+          // Limited runs must not be crowded out by popular wide releases.
+          const limited=new URLSearchParams(params);limited.set('with_release_type','2');
+          const openings=await catalogApi('/discover/movie?'+limited);
+          data.results=[...(openings.results||[]),...(data.results||[])];data.total_pages=Math.max(data.total_pages||1,openings.total_pages||1);
+        }
         if(media==='movie'&&wanted.when==='now'&&wanted.service!=='theaters'){
           const arrivals=await catalogApi('/discover/movie?'+streamingArrivalQuery({...wanted,ids},today()));
           data.results=[...(arrivals.results||[]),...(data.results||[])];data.total_pages=Math.max(data.total_pages||1,arrivals.total_pages||1);
@@ -165,7 +171,7 @@ async function loadCatalog(more=false){
         incoming=await mapLimit(incoming,4,async item=>{
           try{
             const dates=await catalogApi(`/movie/${item.id}/release_dates`),start=shiftedDate(today(),wanted.when==='soon'?1:-42),end=shiftedDate(today(),wanted.when==='soon'?90:0);
-            const matches=(dates.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates?.filter(r=>r.type===3).map(r=>r.release_date.slice(0,10)).filter(d=>d>=start&&d<=end).sort()||[];
+            const matches=(dates.results||[]).find(r=>r.iso_3166_1==='US')?.release_dates?.filter(r=>[2,3].includes(r.type)).map(r=>r.release_date.slice(0,10)).filter(d=>d>=start&&d<=end).sort()||[];
             return {...item,theaterDate:wanted.when==='soon'?matches[0]:matches.at(-1)};
           }catch{return item;}
         });
@@ -222,7 +228,7 @@ async function loadCatalog(more=false){
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else if(wanted.service!=='theaters')results.sort(recentActivityFirst);
     $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No verified titles match these filters. Choose Reality & talk in Show, or Full catalog for licensed titles.</div>';
-    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals + new movies · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
+    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals + new movies · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · limited & wide · popular first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
     if(incomplete)$('count-lbl').textContent+=' · Some results unavailable; retry to check all categories';
     $('load-more').hidden=page>=totalPages;
     enrichLabels([...added.values()],request);
