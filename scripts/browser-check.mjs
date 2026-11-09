@@ -25,17 +25,36 @@ await context.route('**/api/tmdb?*',async route=>{
  else if(path.endsWith('/release_dates'))data=dates(Number(path.split('/')[2]));
  else if(path.startsWith('/tv/42/season/')){const season=Number(path.split('/').at(-1));data={episodes:season===1?[{episode_number:1,name:'Pilot',air_date:'2020-01-01'},{episode_number:2,name:'Second',air_date:day(-1)}]:[{episode_number:1,name:'New season',air_date:day(7)}]};}
  else if(path.startsWith('/movie/')){const id=Number(path.split('/')[2]);data={...(id===1246049?movie:id===2?upcoming:{id,type:'movie',title:'Other movie',original_language:'en',release_date:'2020-01-01'}),release_dates:dates(id)};}
- else if(path.startsWith('/tv/'))data={...show,id:Number(path.split('/')[2])};
+ else if(path.startsWith('/tv/'))data={...show,id:Number(path.split('/')[2]),external_ids:{imdb_id:'tt0944947'}};
  await route.fulfill({json:data});
 });
 await context.route('**/api/digital-prices?*',r=>r.fulfill({json:{matched:true,status:'listed',provider:'Apple TV Store',currency:'USD',url:'https://tv.apple.com/us/movie/test/umc.test',rent:[{format:'HD',amount:19.99}],buy:[{format:'HD',amount:24.99}],checkedAt:new Date().toISOString()}}));
-await context.route('**/api/ratings?*',r=>r.fulfill({json:{ratings:[]}}));
+await context.route('**/api/ratings?*',r=>{
+ const {searchParams}=new URL(r.request().url());
+ const ratings=searchParams.get('type')==='tv'?
+  [{source:'imdb',value:9.2},{source:'tomatoes',value:89,url:'/tv/game_of_thrones'},{source:'tomatoesaudience',value:85},{source:'metacritic',value:86,url:'/tv/game-of-thrones'}]:
+  [{source:'imdb',value:7},{source:'tomatoes',value:80,url:'//untrusted.test/m/example'},{source:'metacritic',value:75}];
+ return r.fulfill({json:{ratings}});
+});
 await context.route('**/api/ai-picks*',r=>r.fulfill({json:{enabled:false}}));
 await context.route('**/auth/v1/settings',r=>r.fulfill({json:{external:{google:false}}}));
 const base=process.env.BASE_URL||'http://127.0.0.1:8766';
 const page=await context.newPage();await page.goto(base);
 await page.locator('#grid .card[data-key="tv:42"]').waitFor();
 await page.locator('#grid .card[data-key="tv:42"]').click();
+const scores=page.locator('#critic-scores');
+const scoreLink=source=>scores.locator('.score-'+source);
+await scoreLink('imdb').waitFor();
+assert.equal(await scoreLink('imdb').getAttribute('href'),'https://www.imdb.com/title/tt0944947/');
+assert.equal(await scoreLink('tomatoes').getAttribute('href'),'https://www.rottentomatoes.com/tv/game_of_thrones');
+assert.equal(await scoreLink('tomatoesaudience').getAttribute('href'),await scoreLink('tomatoes').getAttribute('href'));
+const metacriticURL='https://www.metacritic.com/tv/game-of-thrones';
+await context.route(metacriticURL,r=>r.fulfill({body:'Review page'}));
+const reviewTab=page.waitForEvent('popup');
+await scoreLink('metacritic').click();
+const reviewPage=await reviewTab;
+assert.equal(reviewPage.url(),metacriticURL);
+await reviewPage.close();
 await page.locator('#episode-list .episode-row').first().waitFor();
 await page.getByLabel('Follow this series').check();
 await page.locator('[data-episode="1:1"]').check();
@@ -63,6 +82,9 @@ await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).fil
 const downloadPromise=page.waitForEvent('download');await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).getByRole('button',{name:'Add to calendar',exact:true}).click();const download=await downloadPromise;assert.equal(download.suggestedFilename(),'streamradar-event.ics');
 await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).getByRole('button',{name:'Upcoming Test Film',exact:true}).click();await page.getByRole('button',{name:'Add to calendar',exact:true}).waitFor();assert.match(await page.locator('#detail-actions').innerText(),/Streaming premiere/);await page.getByRole('button',{name:'Rate Upcoming Test Film 4.5 of 5 stars',exact:true}).click();await page.getByText('Your rating: 4.5 of 5',{exact:true}).waitFor();assert.equal(await page.locator('#movie-journey').isVisible(),false);await page.getByRole('button',{name:'Release timeline',exact:true}).click();await page.locator('#movie-journey').filter({hasText:'Rent from $19.99'}).waitFor();assert.doesNotMatch(await page.locator('#movie-journey').innerText(),/Buy from/);
 await page.getByRole('button',{name:'Close release timeline',exact:true}).click();assert.equal(await page.locator('#movie-journey-dialog').isVisible(),false);
+assert.equal(await scoreLink('imdb').getAttribute('href'),'https://www.imdb.com/find/?q=Upcoming%20Test%20Film');
+assert.equal(await scoreLink('tomatoes').getAttribute('href'),'https://www.rottentomatoes.com/search?search=Upcoming%20Test%20Film');
+assert.equal(await scoreLink('metacritic').getAttribute('href'),'https://www.metacritic.com/search/Upcoming%20Test%20Film/');
 const detailDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Add to calendar',exact:true}).click();assert.equal((await detailDownload).suggestedFilename(),'streamradar-event.ics');
 await page.reload();await page.getByText('Your rating: 4.5 of 5',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Rate Upcoming Test Film 4.5 of 5 stars',exact:true}).getAttribute('aria-pressed'),'true');
 assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false);
