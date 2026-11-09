@@ -329,7 +329,7 @@ async function loadDetail(key){
   const request=detailSequence.next();const [media,id]=String(key).split(':');if(!['movie','tv'].includes(media)||!/^\d+$/.test(id))return;
   $('det-inner').innerHTML='<button class="back-control" data-action="back">‹ Back</button><div class="loading">Loading title…</div>';$('det-inner').scrollTop=0;
   try{
-    const raw=await api(`/${media}/${id}?language=en-US&append_to_response=credits,keywords`);
+    const raw=await api(`/${media}/${id}?language=en-US&append_to_response=credits,keywords,external_ids`);
     if(!detailSequence.current(request))return;detailItem=remember({...items.get(key),...normalize(raw,media)});const item=detailItem;
     $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div><div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div><p class="det-overview">${esc(raw.overview||'No description available.')}</p><div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
     renderDetailActions();if(media==='tv'){document.getElementById('detail-actions').insertAdjacentHTML('afterend','<section id="episode-tracker" class="episode-tracker" aria-label="Episode progress"></section>');renderEpisodeTracker(item,request);}$('det-inner').querySelector('h1').focus({preventScroll:true});
@@ -349,12 +349,27 @@ async function loadOffers(item,request){
 
   }catch(e){if(detailSequence.current(request))$('detail-offers').innerHTML='<p class="data-note error-text">Availability could not be checked. Please retry.</p><button class="text-button" data-action="retry-offers">Retry availability</button>';}
 }
+function scoreLinks(item,ratings){
+  const title=encodeURIComponent(item.title);
+  const imdbId=item.external_ids?.imdb_id||item.imdb_id;
+  const tomatoesPath=ratings.find(r=>r.source==='tomatoes'&&/^\/(m|tv)\/[\w-]+\/?$/.test(r.url))?.url;
+  const metacriticPath=ratings.find(r=>r.source==='metacritic'&&/^\/(movie|tv)\/[\w-]+\/?$/.test(r.url))?.url;
+  const tomatoes='https://www.rottentomatoes.com'+(tomatoesPath||'/search?search='+title);
+  return {
+    imdb:'https://www.imdb.com'+(/^tt\d+$/.test(imdbId)?`/title/${imdbId}/`:'/find/?q='+title),
+    tomatoes,
+    tomatoesaudience:tomatoes,
+    metacritic:'https://www.metacritic.com'+(metacriticPath||`/search/${title}/`)
+  };
+}
 async function loadScores(item,request){
   try{const d=await json(`/api/ratings?id=${item.id}&type=${item.type}`);if(!detailSequence.current(request))return;
     const icons={imdb:'⭐',tomatoes:'🍅',tomatoesaudience:'🍿',metacritic:'Ⓜ'};
     const names={imdb:['IMDb','/10',10],tomatoes:['Rotten Tomatoes','%',100],tomatoesaudience:['RT Audience','%',100],metacritic:['Metacritic','/100',100]};
-    const scores=(d.ratings||[]).filter(r=>names[r.source]&&r.value!==null&&r.value!==''&&Number.isFinite(Number(r.value))&&Number(r.value)>=0&&Number(r.value)<=names[r.source][2]);
-    $('critic-scores').innerHTML=scores.length?`<div class="scores-row">${scores.map(r=>`<div class="score-pill score-${r.source}"><span class="score-icon" aria-hidden="true">${icons[r.source]}</span><div><div class="sp-lbl">${names[r.source][0]}</div><div class="sp-val">${esc(r.value)}<small>${names[r.source][1]}</small></div></div></div>`).join('')}</div>`:'<p class="data-note">No critic scores listed for this title.</p>';
+    const ratings=d.ratings||[];
+    const scores=ratings.filter(r=>names[r.source]&&r.value!==null&&r.value!==''&&Number.isFinite(Number(r.value))&&Number(r.value)>=0&&Number(r.value)<=names[r.source][2]);
+    const links=scoreLinks(item,ratings);
+    $('critic-scores').innerHTML=scores.length?`<div class="scores-row">${scores.map(r=>`<a class="score-pill score-${r.source}" href="${esc(links[r.source])}" target="_blank" rel="noopener noreferrer"><span class="score-icon" aria-hidden="true">${icons[r.source]}</span><span><span class="sp-lbl">${names[r.source][0]} <span aria-hidden="true">↗</span></span><span class="sp-val">${esc(r.value)}<small>${names[r.source][1]}</small></span></span></a>`).join('')}</div>`:'<p class="data-note">No critic scores listed for this title.</p>';
   }catch{if(detailSequence.current(request))$('critic-scores').innerHTML='<p class="data-note">Critic scores are temporarily unavailable.</p><button class="text-button" data-action="retry-scores">Retry scores</button>';}
 }
 async function loadActor(id){
