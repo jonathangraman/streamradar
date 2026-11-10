@@ -5,29 +5,28 @@ import {emptyLibrary,escapeHTML as esc} from './core.js';
 export const accountState={user:null,cloud:null,epoch:0};
 export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
   const dialog=document.getElementById('account-dialog'),content=document.getElementById('account-content');
-  let mode=recoveryRequested?'password':'signin',status='Browse as a guest, or sign in to sync your library.',busy=false,identity,googleEnabled=false;
+  let mode=recoveryRequested?'password':'signin',status='',busy=false,identity,googleEnabled=false;
   const message=text=>{const target=document.getElementById('account-message');if(target)target.textContent=text;};
   const render=()=>{
-    document.querySelectorAll('[data-account-open]').forEach(b=>{b.textContent=accountState.user?'Account':'Sign in';});
-    document.getElementById('storage-status').textContent=accountState.user?status:'Saved on this browser. Sign in to sync across devices.';
+    document.querySelectorAll('[data-account-open]').forEach(b=>{b.textContent=accountState.user?'Account':b.dataset.accountOpen||'Sign in';});
     if(accountState.user&&mode!=='password'){
       const guest=readGuest(),count=new Set([...guest.watchlist,...guest.seen].map(x=>x.type+':'+x.id)).size;
-      content.innerHTML=`<p class="account-email">${esc(accountState.user.email)}</p><p id="account-sync-status" role="status">${esc(status)}</p><p>Your ratings, saved titles, and suggestions belong to your account.</p><div class="account-actions"><button class="btn-main" data-account-action="sync">Sync now</button><button class="text-button" data-account-action="signout">Sign out</button></div><section class="account-import"><h3>Bring your saved titles</h3><p>${count?count+' titles saved in this browser.':'No guest titles saved in this browser.'} Import only if these saves are yours. Your browser copy stays available, and existing account ratings take priority.</p><button class="text-button" data-account-action="import" ${!count&&!guest.dismissed.length?'disabled':''}>Import this browser’s saves</button><p>Have an exported backup? Use Import backup in My Watchlist while signed in.</p></section><p id="account-message" role="status"></p>`;
+      content.innerHTML=`<p class="account-email">${esc(accountState.user.email)}</p><p id="account-sync-status" role="status">${esc(status)}</p><div class="account-actions"><button class="btn-main" data-account-action="sync">Sync now</button><button class="text-button" data-account-action="signout">Sign out</button></div><section class="account-import"><h3>Browser saves</h3><p>${count?count+' titles saved here. ':''}${count||guest.dismissed.length?'Import only your own saves.':'No browser saves to import.'}</p><button class="text-button" data-account-action="import" ${!count&&!guest.dismissed.length?'disabled':''}>Import this browser’s saves</button></section><p id="account-message" role="status"></p>`;
     }else{
       const password=mode!=='reset';
-      content.innerHTML=`<p>Keep your ratings and watchlist private, sync across devices, and get picks based on your tastes.</p><form id="account-form">${mode==='password'?'':'<label for="account-email">Email<input id="account-email" type="email" name="email" autocomplete="email" maxlength="254" required></label>'}${password?`<label for="account-password">${mode==='password'?'New password':'Password'}<input id="account-password" name="password" type="password" autocomplete="${mode==='signin'?'current-password':'new-password'}" ${mode==='signin'?'':'minlength="10"'} maxlength="128" required></label>`:''}<button class="btn-main" type="submit">${mode==='signup'?'Create private account':mode==='reset'?'Send reset link':mode==='password'?'Save new password':'Sign in'}</button></form><p id="account-message" role="status"></p><div class="account-actions">${mode==='signin'?'<button class="text-button" data-account-action="signup">Create an account</button><button class="text-button" data-account-action="reset">Forgot password?</button>':mode==='password'?'':'<button class="text-button" data-account-action="signin">Back to sign in</button>'}</div><p class="data-note">You can keep browsing without an account. Existing browser saves are imported only when you choose.</p>`;
+      content.innerHTML=`<form id="account-form">${mode==='password'?'':'<label for="account-email">Email<input id="account-email" type="email" name="email" autocomplete="email" maxlength="254" required></label>'}${password?`<label for="account-password">${mode==='password'?'New password':'Password'}<input id="account-password" name="password" type="password" autocomplete="${mode==='signin'?'current-password':'new-password'}" ${mode==='signin'?'':'minlength="10"'} maxlength="128" required></label>`:''}<button class="btn-main" type="submit">${mode==='signup'?'Create private account':mode==='reset'?'Send reset link':mode==='password'?'Save new password':'Sign in'}</button></form><p id="account-message" role="status"></p><div class="account-actions">${mode==='signin'?'<button class="text-button" data-account-action="signup">Create an account</button><button class="text-button" data-account-action="reset">Forgot password?</button>':mode==='password'?'':'<button class="text-button" data-account-action="signin">Back to sign in</button>'}</div>`;
     }
     if(!accountState.user&&mode!=='password')content.insertAdjacentHTML('beforeend',`<button class="text-button account-google" data-account-action="google" ${googleEnabled?'':'hidden'}>Continue with Google</button>`);
   };
   const cloud=new CloudLibrary({client,storage:localStorage,onChange:next=>{
     try{setLibrary(validateLibrary(next));}catch{status='Could not read the cloud library. Your existing data has not been deleted.';render();}
-  },onStatus:text=>{status=text;document.getElementById('storage-status').textContent=text;const el=document.getElementById('account-sync-status');if(el)el.textContent=text;}});
+  },onStatus:text=>{status=text;const el=document.getElementById('account-sync-status');if(el)el.textContent=text;}});
   accountState.cloud=cloud;
   async function select(session){
     const user=session?.user||null;
     if(identity===user?.id)return;
     identity=user?.id;accountState.epoch++;accountState.user=user;
-    status=user?'Loading your private library…':'Saved on this browser.';
+    status=user?'Loading library…':'';
     setLibrary(emptyLibrary());render();
     if(user)await cloud.select(user);
     else{await cloud.select(null);setLibrary(readGuest());}
@@ -68,7 +67,7 @@ export function mountAccounts({readGuest,setLibrary,validateLibrary,toast}){
       }else{
         const result=mode==='signup'?await client.auth.signUp({email,password,options:{emailRedirectTo:location.origin+'/'}}):await client.auth.signInWithPassword({email,password});
         if(result.error)throw result.error;
-        if(result.data.session){await select(result.data.session);render();message('Signed in. Import this browser’s saves below if they belong to you.');}
+        if(result.data.session){await select(result.data.session);render();message('Signed in.');}
         else message('Check your email to confirm your account, then sign in.');
       }
     }catch(error){message(error.message||'Could not sign in. Please try again.');}finally{busy=false;content.querySelector('#account-form button')?.removeAttribute('disabled');content.querySelectorAll('[data-account-action]').forEach(b=>{if(b.dataset.accountAction!=='import')b.disabled=false;});}

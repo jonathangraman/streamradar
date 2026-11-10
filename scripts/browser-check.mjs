@@ -76,7 +76,7 @@ await page.locator('#import-backup').setInputFiles({name:'backup.json',mimeType:
 await page.getByText('Backup merged with your library.',{exact:true}).waitFor();
 await page.locator('#wl-search').fill('');await page.locator('#wl-type').selectOption('all');assert.equal(await page.locator('#wl-grid .card').count(),2);
 await page.getByRole('button',{name:'UPCOMING',exact:true}).click();
-await page.locator('#calendar-status').filter({hasText:'Checked'}).waitFor({timeout:15000});
+await page.waitForFunction(()=>!document.getElementById('calendar-refresh').disabled,{},{timeout:15000});
 await page.locator('#calendar-month').selectOption(day(14).slice(0,7));
 await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).waitFor();
 const downloadPromise=page.waitForEvent('download');await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).getByRole('button',{name:'Add to calendar',exact:true}).click();const download=await downloadPromise;assert.equal(download.suggestedFilename(),'streamradar-event.ics');
