@@ -64,7 +64,7 @@ function loadLibrary(){
 async function importLegacy(){
   let device;try{device=localStorage.getItem('sr_device_id');}catch{return;}
   if(!device||library.legacyImported)return;
-  $('storage-status').textContent='Recovering this browser’s existing library… New changes are saved locally.';
+  $('storage-status').textContent='Recovering your old library…';
   try{
     const tables=await Promise.all(['watchlist','seen_it','ratings'].map(async table=>{
       const response=await fetch(`${legacy.url}/rest/v1/${table}?select=*&device_id=eq.${encodeURIComponent(device)}`,{headers:{apikey:legacy.key,Authorization:'Bearer '+legacy.key},signal:AbortSignal.timeout(8000)});
@@ -76,9 +76,9 @@ async function importLegacy(){
     const next={...library,watchlist:merge(old.watchlist,library.watchlist),seen:merge(old.seen,library.seen),ratings:{...old.ratings,...library.ratings},legacyImported:true};
     // Local seen state wins over an older remote watchlist record.
     next.watchlist=next.watchlist.filter(x=>!next.seen.some(s=>keyOf(s)===keyOf(x)));save(next);
-    [...library.watchlist,...library.seen].forEach(remember);$('storage-status').textContent='Existing library recovered. New changes are saved on this browser; export a backup.';$('legacy-retry').hidden=true;
+    [...library.watchlist,...library.seen].forEach(remember);$('storage-status').textContent='';$('legacy-retry').hidden=true;
     if(route.view==='watchlist')renderWatchlist();
-  }catch{$('storage-status').textContent='Old cloud records could not be imported. They have not been deleted. New changes are saved on this browser.';$('legacy-retry').hidden=false;}
+  }catch{$('storage-status').textContent='Could not import your old library.';$('legacy-retry').hidden=false;}
 }
 function mutate(action,key,stars){const item=items.get(key);save(updateLibrary(library,action,item,stars));toast(action==='dismiss'?'Not interested saved.':action==='watch'?'Watchlist updated.':action==='remove-seen'?'Removed from Seen It.':'Saved to Seen It.');if(route.view==='watchlist')renderWatchlist();if(route.view==='detail')renderDetailActions();if(route.view==='foryou')renderForYou();const next=[...$('v-'+route.view).querySelectorAll('button[data-action]')].find(b=>b.dataset.key===key&&b.dataset.action===action&&(action!=='rate'||Number(b.dataset.stars)===stars));(next||$('v-'+route.view).querySelector('h1'))?.focus({preventScroll:true});}
 
@@ -178,7 +178,7 @@ async function loadCatalog(more=false){
         if(!sequence.current(request))return;
       }
       if(originalMode||wanted.kind==='movie'||types.includes('tv')||(wanted.service==='netflix'&&wanted.when==='soon')){
-        $('count-lbl').textContent=wanted.kind==='movie'?'Checking movie categories…':'Checking latest season and episode dates…';
+        $('count-lbl').textContent=wanted.kind==='movie'?'Checking movie categories…':'Checking episode dates…';
         incoming=await mapLimit(incoming,4,async item=>{
           if(!sequence.current(request)||(item.type!=='tv'&&wanted.kind!=='movie'&&!originalMode&&!(wanted.service==='netflix'&&wanted.when==='soon')))return item;
           try{return {...item,...normalize(await catalogApi(`/${item.type}/${item.id}?append_to_response=keywords`),item.type)};}catch{if(wanted.when==='soon')throw new Error('Could not check upcoming dates. Please retry.');if(originalMode)throw new Error('Could not verify originals. Please retry.');return item;}
@@ -219,7 +219,7 @@ async function loadCatalog(more=false){
           ?(a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||'')
           :wanted.service==='theaters'?theaterNewestFirst:recentActivityFirst);
         $('grid').innerHTML=preview.map(card).join('');
-        $('count-lbl').textContent=`Showing ${preview.length} verified titles · finding more…`;
+        $('count-lbl').textContent=`${preview.length} titles · loading more…`;
       }
       if(added.size>=catalogBatchTarget||wanted.page>=lastTotalPages||incomplete)break;
       wanted.page++;
@@ -228,8 +228,8 @@ async function loadCatalog(more=false){
     if(wanted.when==='soon')results.sort((a,b)=>(a.theaterDate||a.upcomingDate||a.date||'').localeCompare(b.theaterDate||b.upcomingDate||b.date||''));
     else results.sort(wanted.service==='theaters'?theaterNewestFirst:recentActivityFirst);
     $('grid').innerHTML=visibleTitles(results).map(card).join('')||'<div class="empty">No verified titles match these filters. Choose Reality & talk in Show, or Full catalog for licensed titles.</div>';
-    $('count-lbl').textContent=`${visibleTitles(results).length} titles · English · US · ${originalMode?'Originals + new movies · ':wanted.service==='theaters'?'':'Full catalog · '}${wanted.service!=='theaters'?(wanted.reality==='exclude'?'Reality & talk hidden · ':wanted.reality==='only'?'Reality & talk only · ':''):''}${wanted.when==='soon'?'Upcoming movies, series & seasons · next 90 days · dates may change; streaming arrivals may differ':wanted.service==='theaters'?'Current US theatrical releases · limited & wide · newest first':network!=='all'&&service==='max'?'HBO Max · '+(network==='food'?'Food Network':'Discovery')+' · latest episodes & seasons first':'Newest releases, seasons & episodes first'}`;
-    if(incomplete)$('count-lbl').textContent+=' · Some results unavailable; retry to check all categories';
+    $('count-lbl').textContent=`${visibleTitles(results).length} titles`;
+    if(incomplete)$('count-lbl').textContent+=' · Some results unavailable';
     $('load-more').hidden=page>=totalPages;
     enrichLabels([...added.values()],request);
   }catch(e){if(sequence.current(request)){$('grid').innerHTML=errorHTML(e.message,'retry-catalog');$('count-lbl').textContent='Catalog unavailable';}}
@@ -268,7 +268,7 @@ async function search(q){
     if(!sequence.current(request))return;
     const found=visibleTitles(parts.flat()).sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,30);
     searchResults=found;homeLoaded=true;
-    $('count-lbl').textContent=`${found.length} English matches · ${region}`;
+    $('count-lbl').textContent=`${found.length} matches`;
     $('grid').innerHTML=found.map(item=>{remember(item);return `<button class="search-result" data-action="detail" data-key="${keyOf(item)}">${poster(item)}<span class="info"><strong>${esc(item.title)}</strong><span class="data-note">${esc(item.date.slice(0,4)||'Year unknown')} · ${item.type==='tv'?'Series':'Movie'}</span><span class="card-tags">${tags(item)}</span><p id="offers-${keyOf(item).replace(':','-')}">Checking offers…</p></span></button>`;}).join('')||'<div class="empty">No matching titles. Try another title or spelling.</div>';
     await mapLimit(found,4,async item=>{
       let text;try{const d=await api(`/${item.type}/${item.id}/watch/providers`,{signal}),offer=withVerifiedUSOffers(item,d.results?.[region]||{});
@@ -298,13 +298,11 @@ history.replaceState({...initialRoute,depth:0},'','#'+initialRoute.view+(initial
 function theaterPanelHTML(scope,editing=false){
   const form=!theaterZip||editing;
   if(scope==='home')return (form?
-    '<form class="zip-form" data-zip-form="home"><label for="home-zip">ZIP code</label><div class="zip-controls"><input id="home-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="12345" aria-describedby="home-zip-help" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save</button></div></form>':
-    '<div class="zip-saved"><span>ZIP <strong>'+theaterZip+'</strong></span><button class="text-button" data-action="change-zip">Change</button><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Showtimes ↗</a></div>')+
-    '<small id="home-zip-help">'+(form?'Five-digit US ZIP · saved on this browser. ':'')+'US releases below; local showtimes on Fandango.</small>';
+    '<form class="zip-form" data-zip-form="home"><label for="home-zip">ZIP code</label><div class="zip-controls"><input id="home-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="12345" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save</button></div></form>':
+    '<div class="zip-saved"><span>ZIP <strong>'+theaterZip+'</strong></span><button class="text-button" data-action="change-zip">Change</button><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Showtimes ↗</a></div>');
   return '<h2>Find theaters near you</h2>'+ (form?
-    '<form class="zip-form" data-zip-form="'+scope+'"><label for="'+scope+'-zip">US ZIP code</label><div class="zip-controls"><input id="'+scope+'-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="Enter ZIP code" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save ZIP</button></div></form><small>Enter five digits. Saved on this browser.</small>':
-    '<p>Theaters near <strong>'+theaterZip+'</strong> <button class="text-button" data-action="change-zip">Change ZIP</button></p><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Find nearby theaters & showtimes ↗</a>')+
-    '<small>'+(scope==='home'?'Titles below are US theatrical releases. ':'')+'Choose a theater and movie on Fandango to check local showtimes.</small>';
+    '<form class="zip-form" data-zip-form="'+scope+'"><label for="'+scope+'-zip">US ZIP code</label><div class="zip-controls"><input id="'+scope+'-zip" name="zip" type="text" inputmode="numeric" autocomplete="postal-code" pattern="[0-9]{5}" maxlength="5" required placeholder="Enter ZIP code" value="'+theaterZip+'"><button class="btn-ico" type="submit">Save ZIP</button></div></form>':
+    '<p>Theaters near <strong>'+theaterZip+'</strong> <button class="text-button" data-action="change-zip">Change ZIP</button></p><a class="showtime-link" href="'+theaterURL(theaterZip)+'" target="_blank" rel="noopener noreferrer">Find nearby theaters & showtimes ↗</a>');
 }
 function renderTheaterPanels(){document.querySelectorAll('[data-theater-scope]').forEach(panel=>{panel.innerHTML=theaterPanelHTML(panel.dataset.theaterScope);});}
 document.addEventListener('submit',event=>{
@@ -318,11 +316,11 @@ document.addEventListener('submit',event=>{
 document.addEventListener('input',event=>{if(event.target.matches('[data-zip-form] input'))event.target.setCustomValidity('');});
 function ratingControl(item){
  const value=library.ratings[keyOf(item)]||0;
- return `<fieldset class="rating-control"><legend>${value?'Your rating: '+value+' of 5':'Rate and mark as seen'}</legend><div class="rating-stars">${[1,2,3,4,5].map(n=>`<span class="rating-star"><span class="rating-star-empty" aria-hidden="true">★</span><span class="rating-star-fill" style="width:${Math.max(0,Math.min(1,value-n+1))*100}%" aria-hidden="true"><span>★</span></span>${[n-0.5,n].map((rating,half)=>`<button class="rating-half ${half?'right':'left'}" data-action="rate" data-key="${keyOf(item)}" data-stars="${rating}" aria-label="Rate ${esc(item.title)} ${rating} of 5 stars" aria-pressed="${value===rating}"><span class="sr-only">${rating}</span></button>`).join('')}</span>`).join('')}</div><small class="rating-hint">Tap the left or right half of a star.</small></fieldset>`;
+ return `<fieldset class="rating-control"><legend>${value?'Your rating: '+value+' of 5':'Rate and mark as seen'}</legend><div class="rating-stars">${[1,2,3,4,5].map(n=>`<span class="rating-star"><span class="rating-star-empty" aria-hidden="true">★</span><span class="rating-star-fill" style="width:${Math.max(0,Math.min(1,value-n+1))*100}%" aria-hidden="true"><span>★</span></span>${[n-0.5,n].map((rating,half)=>`<button class="rating-half ${half?'right':'left'}" data-action="rate" data-key="${keyOf(item)}" data-stars="${rating}" aria-label="Rate ${esc(item.title)} ${rating} of 5 stars" aria-pressed="${value===rating}"><span class="sr-only">${rating}</span></button>`).join('')}</span>`).join('')}</div></fieldset>`;
 }
 
-function renderDetailActions(){if(!detailItem)return;const target=$('detail-actions');if(!target)return;const key=keyOf(detailItem),saved=library.watchlist.some(x=>keyOf(x)===key),date=resolvedEvent(detailItem)?.date;
-  target.innerHTML=`<div class="det-actions"><button class="btn-main" data-action="watch" data-key="${key}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="btn-ico" data-action="seen" data-key="${key}">Seen It</button><button class="btn-ico" data-action="similar" data-key="${key}"${recommending?' disabled':''}>Find similar titles</button><div class="trailer-calendar-actions">${showMovieJourney(detailItem)?`<button class="btn-ico" data-action="toggle-movie-journey" aria-controls="movie-journey-dialog" aria-haspopup="dialog">Release timeline</button>`:''}${date>=today()?`<button class="btn-ico" data-action="calendar" data-key="${key}">Add to calendar</button>`:''}<a class="btn-ico trailer-button" href="${esc(trailerLink(detailItem))}" target="_blank" rel="noopener noreferrer" aria-label="Watch trailer for ${esc(detailItem.title)}">▶ Trailer ↗</a></div></div>${ratingControl(detailItem)}${resolvedEvent(detailItem)?`<p class="data-note">Calendar: ${esc(resolvedEvent(detailItem).label)} · ${formatDate(resolvedEvent(detailItem).date)}. ${esc(resolvedEvent(detailItem).source)}</p>`:''}`;
+function renderDetailActions(){if(!detailItem)return;const target=$('detail-actions');if(!target)return;const key=keyOf(detailItem),saved=library.watchlist.some(x=>keyOf(x)===key),event=resolvedEvent(detailItem),date=event?.date;
+  target.innerHTML=`<div class="det-actions"><button class="btn-main" data-action="watch" data-key="${key}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="btn-ico" data-action="seen" data-key="${key}">Seen It</button><button class="btn-ico" data-action="similar" data-key="${key}"${recommending?' disabled':''}>Find similar titles</button><div class="trailer-calendar-actions">${showMovieJourney(detailItem)?`<button class="btn-ico" data-action="toggle-movie-journey" aria-controls="movie-journey-dialog" aria-haspopup="dialog">Release timeline</button>`:''}${date>=today()?`<button class="btn-ico" data-action="calendar" data-key="${key}">Add to calendar</button>`:''}<a class="btn-ico trailer-button" href="${esc(trailerLink(detailItem))}" target="_blank" rel="noopener noreferrer" aria-label="Watch trailer for ${esc(detailItem.title)}">▶ Trailer ↗</a></div></div>${ratingControl(detailItem)}${event?`<p class="data-note">${esc(event.kind==='digital'?'Digital release':event.label)} · ${formatDate(date)}</p>`:''}`;
 }
 async function loadDetail(key){
   const journey=$('movie-journey');if(journey){journey.innerHTML='';delete journey.dataset.loaded;}
@@ -331,7 +329,7 @@ async function loadDetail(key){
   try{
     const raw=await api(`/${media}/${id}?language=en-US&append_to_response=credits,keywords,external_ids`);
     if(!detailSequence.current(request))return;detailItem=remember({...items.get(key),...normalize(raw,media)});const item=detailItem;
-    $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div><div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div><p class="det-overview">${esc(raw.overview||'No description available.')}</p><div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
+    $('det-inner').innerHTML=`<div class="detail-hero">${image(raw.backdrop_path,'w780')?`<img class="bd" src="${image(raw.backdrop_path,'w780')}" alt="">`:''}<div class="detail-grad"></div><button class="back-control" data-action="back">‹ Back</button><div class="det-poster">${poster(item)}</div></div><div class="det-body"><h1 class="det-title" tabindex="-1">${esc(item.title)}</h1><div class="det-meta">${esc(item.date.slice(0,4))} · ${media==='tv'?'Series':'Movie'} ${raw.runtime?' · '+Number(raw.runtime)+' min':''}</div><div class="card-tags">${tags(item)}</div>${raw.next_episode_to_air?.air_date?`<p class="data-note">Next episode: ${esc(formatDate(raw.next_episode_to_air.air_date))} · Season ${Number(raw.next_episode_to_air.season_number)}</p>`:''}<div id="detail-actions"></div><div id="critic-scores" aria-live="polite"><p class="data-note">Loading critic scores…</p></div>${raw.overview?`<p class="det-overview">${esc(raw.overview)}</p>`:''}<div class="genres">${(raw.genres||[]).map(g=>`<span class="gtag">${esc(g.name)}</span>`).join('')}</div><h2 class="sec-lbl">Where to watch · ${esc(region)}</h2><div id="detail-offers" aria-live="polite"><p class="data-note">Checking availability…</p></div><a class="provider-link" href="https://www.themoviedb.org/${media}/${Number(id)}" target="_blank" rel="noopener noreferrer">More title information ↗</a>${(raw.credits?.cast||[]).length?`<h2 class="sec-lbl">Cast</h2><div class="cast-row">${raw.credits.cast.slice(0,20).map(a=>`<button class="cast-card" data-action="actor" data-id="${Number(a.id)}"><div class="cast-photo">${image(a.profile_path,'w185')?`<img src="${image(a.profile_path,'w185')}" alt="" loading="lazy">`:'🎭'}</div><div class="cast-name">${esc(a.name)}</div><div class="cast-char">${esc(a.character)}</div></button>`).join('')}</div>`:''}</div>`;
     renderDetailActions();if(media==='tv'){document.getElementById('detail-actions').insertAdjacentHTML('afterend','<section id="episode-tracker" class="episode-tracker" aria-label="Episode progress"></section>');renderEpisodeTracker(item,request);}$('det-inner').querySelector('h1').focus({preventScroll:true});
     // Optional services must never block the primary title or each other.
     loadOffers(item,request);loadScores(item,request);
@@ -369,31 +367,34 @@ async function loadScores(item,request){
     const ratings=d.ratings||[];
     const scores=ratings.filter(r=>names[r.source]&&r.value!==null&&r.value!==''&&Number.isFinite(Number(r.value))&&Number(r.value)>=0&&Number(r.value)<=names[r.source][2]);
     const links=scoreLinks(item,ratings);
-    $('critic-scores').innerHTML=scores.length?`<div class="scores-row">${scores.map(r=>`<a class="score-pill score-${r.source}" href="${esc(links[r.source])}" target="_blank" rel="noopener noreferrer"><span class="score-icon" aria-hidden="true">${icons[r.source]}</span><span><span class="sp-lbl">${names[r.source][0]} <span aria-hidden="true">↗</span></span><span class="sp-val">${esc(r.value)}<small>${names[r.source][1]}</small></span></span></a>`).join('')}</div>`:'<p class="data-note">No critic scores listed for this title.</p>';
+    $('critic-scores').innerHTML=scores.length?`<div class="scores-row">${scores.map(r=>`<a class="score-pill score-${r.source}" href="${esc(links[r.source])}" target="_blank" rel="noopener noreferrer"><span class="score-icon" aria-hidden="true">${icons[r.source]}</span><span><span class="sp-lbl">${names[r.source][0]} <span aria-hidden="true">↗</span></span><span class="sp-val">${esc(r.value)}<small>${names[r.source][1]}</small></span></span></a>`).join('')}</div>`:'';
   }catch{if(detailSequence.current(request))$('critic-scores').innerHTML='<p class="data-note">Critic scores are temporarily unavailable.</p><button class="text-button" data-action="retry-scores">Retry scores</button>';}
 }
 async function loadActor(id){
   const request=actorSequence.next();$('actor-inner').innerHTML='<button class="back-control" data-action="back">‹ Back</button><div class="loading">Loading actor…</div>';$('actor-inner').scrollTop=0;
   try{const [person,credits]=await Promise.all([api(`/person/${Number(id)}`),api(`/person/${Number(id)}/combined_credits`)]);if(!actorSequence.current(request))return;
     const films=visibleTitles([...new Map((credits.cast||[]).filter(isEnglish).map(x=>normalize(x,x.media_type)).filter(Boolean).map(x=>[keyOf(x),x])).values()]).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    $('actor-inner').innerHTML=`<button class="back-control" data-action="back">‹ Back</button><section class="person-header"><div class="person-portrait">${image(person.profile_path,'w342')?`<img src="${image(person.profile_path,'w342')}" alt="${esc(person.name)}">`:'<span aria-hidden="true">🎭</span>'}</div><div><p class="person-eyebrow">${esc(person.known_for_department||'Film & television')}</p><h1 tabindex="-1">${esc(person.name)}</h1>${person.birthday?`<p class="person-fact">Born ${esc(formatDate(person.birthday))}</p>`:''}${person.place_of_birth?`<p class="person-fact">${esc(person.place_of_birth)}</p>`:''}<p class="person-fact">${films.length} screen credits</p></div></section><details class="actor-summary"><summary>Biography</summary><p>${esc(person.biography||'No biography available.')}</p></details><h2 class="sec-lbl">Filmography <span class="section-hint">Newest first</span></h2><div class="grid">${films.map(card).join('')}</div>`;$('actor-inner').querySelector('h1').focus({preventScroll:true});
+    $('actor-inner').innerHTML=`<button class="back-control" data-action="back">‹ Back</button><section class="person-header"><div class="person-portrait">${image(person.profile_path,'w342')?`<img src="${image(person.profile_path,'w342')}" alt="${esc(person.name)}">`:'<span aria-hidden="true">🎭</span>'}</div><div><p class="person-eyebrow">${esc(person.known_for_department||'Film & television')}</p><h1 tabindex="-1">${esc(person.name)}</h1>${person.birthday?`<p class="person-fact">Born ${esc(formatDate(person.birthday))}</p>`:''}${person.place_of_birth?`<p class="person-fact">${esc(person.place_of_birth)}</p>`:''}<p class="person-fact">${films.length} screen credits</p></div></section><details class="actor-summary"><summary>Biography</summary><p>${esc(person.biography||'No biography available.')}</p></details><h2 class="sec-lbl">Filmography </h2><div class="grid">${films.map(card).join('')}</div>`;$('actor-inner').querySelector('h1').focus({preventScroll:true});
   }catch(e){if(actorSequence.current(request))$('actor-inner').innerHTML='<button class="back-control" data-action="back">‹ Back</button>'+errorHTML(e.message,'retry-actor');}
 }
 let metadataEpoch=accountState.epoch;
-let watchFilters={query:'',type:'all',service:'all',status:'all',sort:'added'},watchMetadata=new Map(),watchRefresh=0;
+let watchFilters={query:'',type:'all',service:'all',status:'all',sort:'added'},watchMetadata=new Map();
 function watchlistTitles(){return wlTab==='tracking'?Object.values(library.progress||{}).filter(p=>p.tracking).map(p=>p.item):library[wlTab]||[];}
 function renderWatchlist(){
- $('wl-sub').textContent=`${library.watchlist.length} to watch · ${library.seen.length} seen · ${Object.values(library.progress||{}).filter(p=>p.tracking).length} following`;
  document.querySelectorAll('[data-action="wl-tab"]').forEach(b=>{b.classList.toggle('on',b.dataset.tab===wlTab);b.setAttribute('aria-pressed',b.dataset.tab===wlTab);});
  const titles=watchlistTitles().map(x=>({...x,...watchMetadata.get(keyOf(x))}));
  const filtered=filterWatchlist(titles,library,watchFilters);
  $('wl-count').textContent=`${filtered.length} of ${titles.length} titles`;
- $('wl-grid').innerHTML=filtered.map(item=>`<div class="wl-card-wrap">${card(item)}${item.type==='tv'?`<p class="data-note">${library.progress?.[keyOf(item)]?.tracking?Object.values(library.progress[keyOf(item)].episodes).filter(Boolean).length+' episodes watched':'Open title to track episodes'}${hasNewEpisodes(item,library)?' · New episode to watch':''}</p>`:''}<button class="text-button wl-rating-button" data-action="detail" data-key="${keyOf(item)}" aria-label="Rate ${esc(item.title)}">${library.ratings[keyOf(item)]?'★ '+library.ratings[keyOf(item)]+' / 5':'Rate'}</button><button class="text-button" data-action="${wlTab==='seen'?'remove-seen':'seen'}" data-key="${keyOf(item)}">${wlTab==='seen'?'Remove from Seen It':'Mark as seen'}</button></div>`).join('')||'<div class="empty">No titles match. Try another filter or search for a title to save.</div>';
+ $('wl-grid').innerHTML=filtered.map(item=>{
+  const progress=library.progress?.[keyOf(item)];
+  const status=[progress?.tracking?`${Object.values(progress.episodes).filter(Boolean).length} episodes watched`:'',hasNewEpisodes(item,library)?'New episodes':''].filter(Boolean).join(' · ');
+  return `<div class="wl-card-wrap">${card(item)}${status?`<p class="data-note">${status}</p>`:''}<button class="text-button wl-rating-button" data-action="detail" data-key="${keyOf(item)}" aria-label="Rate ${esc(item.title)}">${library.ratings[keyOf(item)]?'★ '+library.ratings[keyOf(item)]+' / 5':'Rate'}</button><button class="text-button" data-action="${wlTab==='seen'?'remove-seen':'seen'}" data-key="${keyOf(item)}">${wlTab==='seen'?'Remove from Seen It':'Mark as seen'}</button></div>`;
+ }).join('')||'<div class="empty">No titles match. Try another filter or search for a title to save.</div>';
  void refreshWatchMetadata(titles);
 }
 async function refreshWatchMetadata(titles){
- const epoch=accountState.epoch,run=++watchRefresh,missing=titles.filter(x=>!watchMetadata.has(keyOf(x)));
- if(!missing.length)return;$('wl-status').textContent='Checking US subscription availability and new episodes…';
+ const epoch=accountState.epoch,missing=titles.filter(x=>!watchMetadata.has(keyOf(x)));
+ if(!missing.length)return;$('wl-status').textContent='Checking availability…';
  await mapLimit(missing,4,async item=>{if(accountState.epoch!==epoch)return;
   // Mark in-flight entries so typing a search does not duplicate requests.
   watchMetadata.set(keyOf(item),{});
@@ -402,11 +403,12 @@ async function refreshWatchMetadata(titles){
    watchMetadata.set(keyOf(item),{...normalize(d,item.type),subscriptionServices});
   }catch{watchMetadata.set(keyOf(item),{availabilityUnknown:true});}
  });
- if(accountState.epoch!==epoch)return;if(route.view==='watchlist'){renderWatchlist();$('wl-status').textContent='Availability checked for this visit. Unknown availability is excluded from service filters.';}
+ if(accountState.epoch!==epoch)return;
+ $('wl-status').textContent='';if(route.view==='watchlist')renderWatchlist();
 }
 function renderActiveHome(){
  if($('home-search-input').value.trim()){
-  const found=visibleTitles(searchResults);$('count-lbl').textContent=`${found.length} English matches · ${region}`;
+  const found=visibleTitles(searchResults);$('count-lbl').textContent=`${found.length} matches`;
   $('grid').innerHTML=found.map(item=>{remember(item);return `<button class="search-result" data-action="detail" data-key="${keyOf(item)}">${poster(item)}<span class="info"><strong>${esc(item.title)}</strong><span class="data-note">${esc(item.date.slice(0,4)||'Year unknown')} · ${item.type==='tv'?'Series':'Movie'}</span><p id="offers-${keyOf(item).replace(':','-')}">${esc(searchOfferText.get(keyOf(item))||'Checking offers…')}</p></span></button>`;}).join('')||'<div class="empty">No matching titles.</div>';
  }else if(homeLoaded){$('grid').innerHTML=visibleTitles(results).map(card).join('');$('count-lbl').textContent=$('count-lbl').textContent.replace(/^\d+ titles/,visibleTitles(results).length+' titles');}
 }
@@ -414,7 +416,7 @@ let episodeSequence=0,episodeItems=[];
 function renderEpisodeTracker(item,request){
  const target=$('episode-tracker');if(!target)return;
  const seasons=(item.seasons||[]).filter(s=>s.season_number>0),selected=item.last_episode_to_air?.season_number||seasons.find(s=>s.air_date<=today())?.season_number||1;
- target.innerHTML=`<h2>Episode progress</h2><label class="follow-series"><input type="checkbox" data-follow-series="${keyOf(item)}" ${library.progress?.[keyOf(item)]?.tracking?'checked':''}> Follow this series</label><p class="data-note">Watched episodes sync with your library. New episodes can reappear even after Seen It. Air dates may differ by service.</p>${seasons.length?`<label for="episode-season">Season<select id="episode-season">${seasons.map(s=>`<option value="${s.season_number}" ${s.season_number===selected?'selected':''}>Season ${s.season_number}</option>`).join('')}</select></label><button class="text-button" data-action="episodes-caught-up" data-key="${keyOf(item)}">Mark aired episodes in this season watched</button><p id="episode-summary" role="status"></p><div id="episode-list"></div>`:'<p>No season details are available yet.</p>'}`;
+ target.innerHTML=`<h2>Episode progress</h2><label class="follow-series"><input type="checkbox" data-follow-series="${keyOf(item)}" ${library.progress?.[keyOf(item)]?.tracking?'checked':''}> Follow this series</label>${seasons.length?`<label for="episode-season">Season<select id="episode-season">${seasons.map(s=>`<option value="${s.season_number}" ${s.season_number===selected?'selected':''}>Season ${s.season_number}</option>`).join('')}</select></label><button class="text-button" data-action="episodes-caught-up" data-key="${keyOf(item)}">Mark aired episodes watched</button><p id="episode-summary" role="status"></p><div id="episode-list"></div>`:'<p>No season details are available yet.</p>'}`;
  if(seasons.length){$('episode-season').addEventListener('change',()=>loadEpisodeSeason(item,Number($('episode-season').value),request));void loadEpisodeSeason(item,selected,request);}
 }
 async function loadEpisodeSeason(item,season,request){
@@ -426,7 +428,7 @@ async function loadEpisodeSeason(item,season,request){
 function renderEpisodes(item){
  if(!$('episode-list'))return;const bulk=document.querySelector('[data-action="episodes-caught-up"]');if(bulk)bulk.disabled=!episodeItems.some(e=>e.air_date&&e.air_date<=today());const watched=library.progress?.[keyOf(item)]?.episodes||{};
  $('episode-summary').textContent=`${episodeItems.filter(e=>watched[e.season_number+':'+e.episode_number]).length} of ${episodeItems.length} episodes watched`;
- $('episode-list').innerHTML=episodeItems.map(e=>{const aired=e.air_date&&e.air_date<=today(),ep=e.season_number+':'+e.episode_number;return `<label class="episode-row"><input type="checkbox" data-episode="${ep}" data-key="${keyOf(item)}" ${watched[ep]?'checked':''} ${!aired?'disabled':''}><span><strong>E${e.episode_number} · ${esc(e.name||'Episode '+e.episode_number)}</strong><small>${e.air_date?formatDate(e.air_date):'Date unannounced'}${!aired?' · Not aired':''}</small></span></label>`;}).join('');
+ $('episode-list').innerHTML=episodeItems.map(e=>{const aired=e.air_date&&e.air_date<=today(),ep=e.season_number+':'+e.episode_number;return `<label class="episode-row"><input type="checkbox" data-episode="${ep}" data-key="${keyOf(item)}" ${watched[ep]?'checked':''} ${!aired?'disabled':''}><span><strong>E${e.episode_number} · ${esc(e.name||'Episode '+e.episode_number)}</strong><small>${e.air_date?formatDate(e.air_date):'Date unannounced'}</small></span></label>`;}).join('');
 }
 let calendarPlans=new Map(),digitalQuotes=new Map();
 let calendarEntries=[],calendarPage=0,calendarTotalPages=1,calendarBusy=false,calendarLoaded=false,calendarRun=0;
@@ -436,9 +438,23 @@ function renderCalendar(){
  month.value=calendarFilters.month;
  const saved=new Set([...library.watchlist,...library.seen,...Object.values(library.progress||{}).filter(p=>p.tracking).map(p=>p.item)].map(keyOf));
  const entries=calendarEntries.filter(e=>e.date.slice(0,7)===calendarFilters.month&&(calendarFilters.stage==='all'||e.kind===calendarFilters.stage||calendarFilters.stage==='episode'&&e.kind==='season')&&(calendarFilters.service==='all'||e.service===calendarFilters.service)&&(calendarFilters.type==='all'||e.item.type===calendarFilters.type)&&(!calendarFilters.saved||saved.has(keyOf(e.item)))).sort((a,b)=>a.date.localeCompare(b.date)||a.item.title.localeCompare(b.item.title));
- let date='';$('calendar-list').innerHTML=entries.map(e=>{const header=e.date!==date?`<h2 class="calendar-day">${formatDate(e.date)}</h2>`:'';date=e.date;const serviceName=(e.service==='digital'?'Digital stores':serviceDefinitions.find(s=>s.id===e.service)?.label)||'Service unconfirmed';return header+`<article class="calendar-entry"><div>${e.item.poster?`<img src="${image(e.item.poster,'w154')}" alt="" loading="lazy">`:''}</div><div><button class="calendar-title text-button" data-action="calendar-detail" data-key="${e.key}">${esc(e.item.title)}</button><p>${esc(e.label)} · ${esc(serviceName)}</p><small>${esc(e.source)}</small>${e.item.type==='movie'?`<p class="journey-price">${e.kind==='digital'?esc(formatDigitalQuote(digitalQuotes.get(e.item.id))):esc(journeyDestination(calendarPlans.get(e.item.id)?.plan))}</p>${e.kind==='digital'?`<button class="text-button" data-action="check-price" data-key="${keyOf(e.item)}">Check current rental price</button>`:''}<button class="text-button" data-action="movie-journey" data-key="${keyOf(e.item)}">${showMovieJourney(e.item)?'Theater → Home timeline':'Movie details'}</button>`:''}<div><button class="text-button" data-action="calendar-event" data-key="${e.key}">Add to calendar</button></div></div></article>`;}).join('')||'<p class="empty">No confirmed dates match this month and these filters. Try another month or load more releases.</p>';
+ let date='';
+ $('calendar-list').innerHTML=entries.map(e=>{
+  const header=e.date!==date?`<h2 class="calendar-day">${formatDate(e.date)}</h2>`:'';
+  date=e.date;
+  const serviceName=['digital','theaters'].includes(e.service)?'':serviceDefinitions.find(s=>s.id===e.service)?.label;
+  const label=e.kind==='digital'?'Digital release':e.label;
+  const plan=calendarPlans.get(e.item.id)?.plan,quote=digitalQuotes.get(e.item.id);
+  const price=e.kind==='digital'&&quote?formatDigitalQuote(quote):'';
+  const destination=e.kind==='theater'&&(plan?.streaming.length||plan?.expected)?journeyDestination(plan):'';
+  const movieActions=e.item.type==='movie'?`
+    ${price||destination?`<p class="journey-price">${esc(price||destination)}</p>`:''}
+    ${e.kind==='digital'?`<button class="text-button" data-action="check-price" data-key="${keyOf(e.item)}">Check current rental price</button>`:''}
+    <button class="text-button" data-action="movie-journey" data-key="${keyOf(e.item)}">${showMovieJourney(e.item)?'Release timeline':'Movie details'}</button>`:'';
+  return header+`<article class="calendar-entry"><div>${e.item.poster?`<img src="${image(e.item.poster,'w154')}" alt="" loading="lazy">`:''}</div><div><button class="calendar-title text-button" data-action="calendar-detail" data-key="${e.key}">${esc(e.item.title)}</button><p>${esc(label)}${serviceName?` · ${esc(serviceName)}`:''}</p>${movieActions}<div><button class="text-button" data-action="calendar-event" data-key="${e.key}">Add to calendar</button></div></div></article>`;
+ }).join('')||(calendarBusy||!calendarLoaded?'':'<p class="empty">No releases match these filters.</p>');
  renderUndatedPlans();
- $('calendar-count').textContent=`${entries.length} events this month · ${calendarEntries.length} dates found across the next 90 days`;
+ $('calendar-count').textContent=`${entries.length} events this month`;
  $('calendar-more').hidden=calendarPage>=calendarTotalPages||calendarBusy;$('calendar-refresh').disabled=calendarBusy;$('calendar-export').disabled=!entries.length;
  if(!calendarLoaded&&!calendarBusy)void loadStreamingCalendar(true);
 }
@@ -450,7 +466,7 @@ function addCalendarEntry(item,event){
 async function loadStreamingCalendar(reset=true){
  if(calendarBusy)return;calendarBusy=true;const run=++calendarRun,epoch=accountState.epoch;calendarLoaded=true;
  if(reset){calendarEntries=[];calendarPlans.clear();calendarPage=0;}const nextPage=calendarPage+1;
- $('calendar-status').textContent='Checking confirmed US streaming dates and upcoming episodes…';renderCalendar();
+ $('calendar-status').textContent='Checking release dates…';renderCalendar();
  try{
   const movieQuery=futureMovieQuery({page:nextPage});
   const [movieData,theaterData,soonTheaterData]=await Promise.all([api('/discover/movie?'+movieQuery),api('/discover/movie?'+catalogQuery({service:'theaters',when:'now',kind:'movie',page:nextPage})),api('/discover/movie?'+catalogQuery({service:'theaters',when:'soon',kind:'movie',page:nextPage}))]);
@@ -485,8 +501,8 @@ async function loadStreamingCalendar(reset=true){
   if(run!==calendarRun||epoch!==accountState.epoch)return;
   // Prefer a concrete episode over an equivalent broad season-premiere entry.
   calendarEntries=calendarEntries.filter(e=>e.kind!=='season'||!calendarEntries.some(x=>x.kind==='episode'&&keyOf(x.item)===keyOf(e.item)&&x.date===e.date&&x.season===e.season));
-  calendarPage=nextPage;$('calendar-status').textContent=`Checked ${calendarPage} movie / theatrical discovery page${calendarPage===1?'':'s'} plus saved titles and series. ${failed?'Some sources failed; refresh to retry. ':''}Streaming dates require service-named US release evidence. Coverage depends on source metadata; Load more checks additional movies.`;
- }catch(error){if(run===calendarRun)$('calendar-status').textContent='Could not finish checking releases. '+error.message+' Use Refresh to retry; any dates already found remain visible.';}
+  calendarPage=nextPage;$('calendar-status').textContent=failed?'Some dates could not be loaded. Refresh to retry.':'';
+ }catch{if(run===calendarRun)$('calendar-status').textContent='Could not load release dates. Refresh to retry.';}
  finally{if(run===calendarRun){calendarBusy=false;if(route.view==='calendar')renderCalendar();}}
 }
 function exportCalendar(){
@@ -497,18 +513,17 @@ function exportCalendar(){
 }
 
 function journeyDestination(plan){
- if(!plan)return 'Streaming destination not announced';
- const next=plan.streaming.find(e=>e.date>=today())||plan.streaming.at(-1);
- if(next)return `${next.serviceName} · ${formatDate(next.date)} (listed streaming date)`;
- if(plan.expected)return `Likely ${plan.expected.serviceName} · date not announced (studio-based estimate)`;
- return 'Subscription service and date not announced';
+ const next=plan?.streaming.find(e=>e.date>=today())||plan?.streaming.at(-1);
+ if(next)return `${next.serviceName} · ${formatDate(next.date)}`;
+ if(plan?.expected)return `Likely ${plan.expected.serviceName} · date unannounced`;
+ return 'Streaming date unannounced';
 }
 function renderUndatedPlans(){
  const target=$('calendar-undated');if(!target)return;
  if(!['all','streaming','theater'].includes(calendarFilters.stage)||calendarFilters.type==='tv'){target.innerHTML='';return;}
  const saved=new Set([...library.watchlist,...library.seen,...Object.values(library.progress||{}).filter(p=>p.tracking).map(p=>p.item)].map(keyOf));
  const pending=[...calendarPlans.values()].filter(({item,plan})=>!plan.streaming.length&&plan.theaterDate&&plan.theaterDate>=shiftedDate(today(),-42)&&plan.theaterDate<=shiftedDate(today(),90)&&(!calendarFilters.saved||saved.has(keyOf(item)))&&(calendarFilters.service==='all'||calendarFilters.service==='theaters'||plan.expected?.service===calendarFilters.service)).sort((a,b)=>a.plan.theaterDate.localeCompare(b.plan.theaterDate));
- target.innerHTML=pending.length?`<h2 class="calendar-day">After theaters · streaming date pending</h2><p class="data-note">These recent/upcoming theatrical movies have no confirmed streaming date. They are kept outside dated calendar events. Studio expectations are estimates, not title-specific announcements.</p>`+pending.map(({item,plan})=>`<article class="journey-pending"><button class="text-button" data-action="movie-journey" data-key="${keyOf(item)}">${esc(item.title)}</button><p>${plan.theaterDate<=today()?'In theaters since':'US theaters'} ${formatDate(plan.theaterDate)}</p><p>${esc(journeyDestination(plan))}</p>${plan.digitalDates.length?`<small>Digital rental: ${formatDate(plan.digitalDates[0])} · ${esc(formatDigitalQuote(digitalQuotes.get(item.id)))}</small>`:'<small>Digital date and price not announced</small>'}</article>`).join(''):'';
+ target.innerHTML=pending.length?`<h2 class="calendar-day">After theaters · streaming date pending</h2>`+pending.map(({item,plan})=>`<article class="journey-pending"><button class="text-button" data-action="movie-journey" data-key="${keyOf(item)}">${esc(item.title)}</button><p>${plan.theaterDate<=today()?'In theaters since':'US theaters'} ${formatDate(plan.theaterDate)}</p><p>${esc(journeyDestination(plan))}</p>${plan.digitalDates.length?`<small>Digital rental: ${formatDate(plan.digitalDates[0])}</small>`:''}</article>`).join(''):'';
 }
 let priceRequests=new Map();
 async function checkDigitalPrice(id,force=false){
@@ -518,20 +533,19 @@ async function checkDigitalPrice(id,force=false){
 }
 function renderMovieJourney(item){
  const target=$('movie-journey'),entry=calendarPlans.get(item.id);if(!target||!entry)return;const plan=entry.plan,quote=digitalQuotes.get(item.id);
- target.innerHTML=`<h2>Theater → Digital → Streaming</h2><p class="data-note">US release windows · all services, whether you subscribe or not.</p><ol class="release-timeline"><li><strong>Theaters</strong><p>${plan.theaterDate?formatDate(plan.theaterDate):'US theatrical date not announced'}</p><small>US theatrical release metadata</small></li><li><strong>Digital rental</strong><p>${plan.digitalDates.length?plan.digitalDates.map(formatDate).join(' · '):'Digital release date not announced'}</p><small>Listed US digital dates; rental availability must be confirmed with the store.</small><p>${quote?esc(formatDigitalQuote(quote)):'Checking current digital prices…'}</p>${quote?.matched?`<a class="text-button" href="${esc(quote.url)}" target="_blank" rel="noopener noreferrer">Check Apple TV Store ↗</a><small>Current US store listing checked ${esc(new Date(quote.checkedAt).toLocaleString())}. Prices can change; a future launch price is not confirmed.</small>`:'<small>Separate payment before/instead of subscription streaming. Future prices may not be announced.</small>'}<button class="text-button" data-action="check-price" data-key="${keyOf(item)}">Refresh digital price</button></li><li><strong>Subscription streaming</strong>${plan.streaming.length?plan.streaming.map(event=>`<p>${esc(event.serviceName)} · ${formatDate(event.date)}${event.date<=today()?' · Listed release has passed':''}</p>`).join(''):`<p>${esc(journeyDestination(plan))}</p>`}${plan.expected?`<small>${esc(plan.expected.company)} production credit; US distributor and title-specific rights may differ. No exact date is predicted.</small><a class="text-button" href="${esc(plan.expected.source)}" target="_blank" rel="noopener noreferrer">Streaming-deal source ↗</a>`:'<small>Service-named US release dates or official announcements. Inclusion in a subscription is separate from rental/purchase; confirm current availability below.</small>'}</li></ol>`;
+ target.innerHTML=`<ol class="release-timeline"><li><strong>Theaters</strong><p>${plan.theaterDate?formatDate(plan.theaterDate):'Date unannounced'}</p></li><li><strong>Digital rental</strong><p>${plan.digitalDates.length?plan.digitalDates.map(formatDate).join(' · '):'Date unannounced'}</p><p>${quote?esc(formatDigitalQuote(quote)):'Checking current digital prices…'}</p>${quote?.matched?`<a class="text-button" href="${esc(quote.url)}" target="_blank" rel="noopener noreferrer">Check Apple TV Store ↗</a>`:''}<button class="text-button" data-action="check-price" data-key="${keyOf(item)}">Refresh digital price</button></li><li><strong>Subscription streaming</strong>${plan.streaming.length?plan.streaming.map(event=>`<p>${esc(event.serviceName)} · ${formatDate(event.date)}</p>`).join(''):`<p>${esc(journeyDestination(plan))}</p>`}${plan.expected?`<a class="text-button" href="${esc(plan.expected.source)}" target="_blank" rel="noopener noreferrer">Streaming-deal source ↗</a>`:''}</li></ol>`;
 }
 async function loadMovieJourney(item,request){
  try{const dates=await api('/movie/'+item.id+'/release_dates');if(!detailSequence.current(request))return;
   $('movie-journey').dataset.loaded='true';const full={...item,release_dates:dates};calendarPlans.set(item.id,{item:full,plan:buildReleasePlan(full)});renderMovieJourney(item);
   void checkDigitalPrice(item.id).then(()=>{if(detailSequence.current(request))renderMovieJourney(item);});
- }catch{if(detailSequence.current(request)&&$('movie-journey'))$('movie-journey').innerHTML='<h2>Theater → Digital → Streaming</h2><p>Could not check release windows. Reopen the title to retry. No dates or prices have been assumed.</p>';}
+ }catch{if(detailSequence.current(request)&&$('movie-journey'))$('movie-journey').innerHTML='<p>Could not load release dates. Reopen the timeline to retry.</p>';}
 }
 
 function renderForYou(){
-  const seeds=recommendationSeeds(library);
-  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>My services</legend><p>No selection means any subscription service.</p>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><div class="pick-actions"><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button> <button class="gen-btn ai-picks-button" data-action="ai-recommend"${recommending||!accountState.user?' disabled':''}>Get AI picks</button></div><p class="data-note">${accountState.user?'Optional AI: sends a limited selection of your saved titles and ratings to an AI provider. Your email is not sent. Optional; regular picks are always available.':'Sign in to try optional AI picks based on your private library.'}</p><p class="data-note" role="status">${esc(aiNotice)}</p><p class="data-note">${similarSeed?'Suggestions based on this title.':seeds.length?'Picks based on your ratings and watchlist. Ratings carry more weight; low ratings reduce similar genres.':'Pick a type and genre to discover titles. Rate favorites 4–5 stars for personal recommendations.'} Year means the movie release or series premiere. Filters apply when you refresh. Not interested choices are saved with your library.</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
+  $('fy-inner').innerHTML=`<div class="filter-row pick-filters"><label for="pick-media">Type<select id="pick-media"><option value="all">Movies & series</option><option value="movie">Movies</option><option value="tv">Series</option></select></label><label for="pick-genre">Genre<select id="pick-genre">${pickGenres.map(g=>`<option value="${g.id}">${g.label}</option>`).join('')}</select></label><label for="pick-year">Year<select id="pick-year"><option value="all">Any year</option>${pickYears.map(y=>`<option value="${y}">${y}</option>`).join('')}</select></label></div>${similarSeed?`<p class="similar-context">Similar to <strong>${esc(similarSeed.title)}</strong> <button class="text-button" data-action="clear-similar"${recommending?' disabled':''}>Back to personal picks</button></p>`:''}<fieldset class="pick-services"><legend>Services</legend>${serviceDefinitions.filter(s=>!['all','theaters'].includes(s.id)).map(s=>`<label><input type="checkbox" value="${s.id}" ${pickServices.includes(s.id)?'checked':''} ${recommending?'disabled':''}>${esc(s.label)}</label>`).join('')}</fieldset><div class="pick-actions"><button class="gen-btn" data-action="recommend"${recommending?' disabled':''}>${recommending?'Finding picks…':'Refresh picks'}</button> ${accountState.user?`<button class="gen-btn ai-picks-button" data-action="ai-recommend"${recommending?' disabled':''}>Get AI picks</button>`:'<button class="gen-btn ai-picks-button" data-account-open="Sign in for AI picks">Sign in for AI picks</button>'}</div>${accountState.user?'<details class="ai-picks-info"><summary>About AI picks</summary><p>AI picks share some saved titles and ratings with an AI provider. The AI provider does not receive your email.</p></details>':''}<p id="ai-picks-status" class="data-note" role="status">${esc(aiNotice)}</p>`+unseenTitles(library.recs,library,true).filter(isEnglish).filter(x=>!(library.dismissed||[]).includes(keyOf(x))).map(item=>{
     const saved=library.watchlist.some(x=>keyOf(x)===keyOf(item));
-    return `<article class="rec-card">${card(item)}<p class="rec-why">${esc(item.reason||'A title to explore.')}</p><div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
+    return `<article class="rec-card">${card(item)}${item.reason?`<p class="rec-why">${esc(item.reason)}</p>`:''}<div class="rec-actions"><button class="text-button" data-action="watch" data-key="${keyOf(item)}" aria-pressed="${saved}">${saved?'Remove from watchlist':'Add to watchlist'}</button><button class="text-button" data-action="dismiss" data-key="${keyOf(item)}">Not interested</button><button class="text-button" data-action="seen" data-key="${keyOf(item)}">Seen It</button></div>${ratingControl(item)}</article>`;
   }).join('');
   $('pick-year').value=pickYear;$('pick-year').disabled=recommending;$('pick-year').addEventListener('change',e=>{pickYear=e.target.value;try{persistPreferences();}catch{toast('Could not save filter preferences.');}});
   document.querySelectorAll('.pick-services input').forEach(el=>el.addEventListener('change',()=>{pickServices=[...document.querySelectorAll('.pick-services input:checked')].map(x=>x.value);try{persistPreferences();}catch{toast('Could not save filter preferences.');}}));
@@ -608,7 +622,7 @@ async function recommend(useAI=false){
           const availability=item.reason.match(/Included with .*$/)?.[0]||'';
           return {...item,reason:'AI pick: '+p.reason+' '+availability};
         });
-        picks=aiPicks;aiNotice='AI picks based on your saved titles and ratings. Regular Refresh picks is always available.';
+        picks=aiPicks;aiNotice='';
       }catch(e){if(accountState.epoch!==accountEpoch)return;aiNotice=(e.name==='TimeoutError'?'AI took too long.':e.message)+' Showing regular picks.';}
     }
     if(accountState.epoch!==accountEpoch)return;
@@ -683,7 +697,7 @@ const updateNetworkStatus=()=>{$('offline').hidden=navigator.onLine;};window.add
 loadLibrary();similarSeed=library.recommendationSeed||null;renderServices();loadCatalog();if(initialRoute.view!=='home')showRoute(initialRoute,false);
 await importLegacy();
 mountAccounts({readGuest:()=>{const saved=readJSON('sr_library_v2',null);return readGuestLibrary(localStorage,saved?validLibrary(saved):migrateLegacy(readJSON('sr_wl',[]),readJSON('sr_seen',[]),readJSON('sr_ratings',{})));},validateLibrary:validLibrary,toast,setLibrary:next=>{
-  library=next;if(metadataEpoch!==accountState.epoch){metadataEpoch=accountState.epoch;watchMetadata.clear();calendarPlans.clear();calendarEntries=[];calendarLoaded=false;calendarRun++;calendarBusy=false;}similarSeed=next.recommendationSeed||null;[...library.watchlist,...library.seen,...library.recs].forEach(remember);
+  library=next;if(metadataEpoch!==accountState.epoch){metadataEpoch=accountState.epoch;watchMetadata.clear();$('wl-status').textContent='';calendarPlans.clear();calendarEntries=[];calendarLoaded=false;calendarRun++;calendarBusy=false;}similarSeed=next.recommendationSeed||null;[...library.watchlist,...library.seen,...library.recs].forEach(remember);
   if(route.view==='watchlist')renderWatchlist();else if(route.view==='foryou')renderForYou();else if(route.view==='detail'){renderDetailActions();if(detailItem?.type==='tv')renderEpisodes(detailItem);}else if(route.view==='home')renderActiveHome();else if(route.view==='calendar')renderCalendar();
 }});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
