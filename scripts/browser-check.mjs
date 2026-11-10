@@ -3,13 +3,15 @@
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
+import {readFile} from 'node:fs/promises';
 let server;
 if(!process.env.BASE_URL){server=spawn(process.execPath,['scripts/dev-server.js'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:'8766'},stdio:['ignore','pipe','pipe']});await new Promise((resolve,reject)=>{server.stdout.once('data',resolve);server.once('error',reject);server.once('exit',code=>reject(new Error('Preview server exited '+code)));});}
 process.on('exit',()=>server?.kill());
 const now=new Date(),day=offset=>{const d=new Date(now);d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10);};
 const movie={id:1246049,type:'movie',title:'Dracula',original_language:'fr',release_date:'2025-07-30',genre_ids:[27],genres:[{id:27,name:'Horror'}],vote_average:7.3,runtime:130};
 const upcoming={id:2,type:'movie',title:'Upcoming Test Film',original_language:'en',release_date:day(-30),genre_ids:[18],genres:[{id:18,name:'Drama'}]};
-const show={id:42,type:'tv',name:'Review Series',title:'Review Series',original_language:'en',first_air_date:'2020-01-01',genre_ids:[18],genres:[{id:18,name:'Drama'}],networks:[{id:4330}],seasons:[{season_number:1,air_date:'2020-01-01',episode_count:2},{season_number:2,air_date:day(7),episode_count:1}],last_episode_to_air:{season_number:1,episode_number:2,air_date:day(-1)},next_episode_to_air:{season_number:2,episode_number:1,air_date:day(7),name:'New season'}};
+const show={id:42,type:'tv',name:'Review Series',title:'Review Series',original_language:'en',first_air_date:'2020-01-01',genre_ids:[18],genres:[{id:18,name:'Drama'}],networks:[{id:4330}],seasons:[{season_number:1,air_date:'2020-01-01',episode_count:2},{season_number:2,air_date:day(7),episode_count:2}],last_episode_to_air:{season_number:1,episode_number:2,air_date:day(-1)},next_episode_to_air:{season_number:2,episode_number:1,air_date:day(7),name:'New season'}};
+const batchShow={...show,id:43,name:'Full Season Series',title:'Full Season Series',seasons:[show.seasons[0],{...show.seasons[1],episode_count:3}]};
 const dates=id=>({results:[{iso_3166_1:'US',release_dates:[{type:3,release_date:'2025-01-01',note:''},{type:4,release_date:id===2?day(14):day(-10),note:'Paramount+'}]}]});
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{}),args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage']});
 const context=await browser.newContext({viewport:{width:412,height:915},serviceWorkers:'block'}),errors=[];
@@ -18,14 +20,18 @@ await context.route('**/api/tmdb?*',async route=>{
  const q=new URL(route.request().url()).searchParams,path=q.get('path');let data={results:[]};
  if(path.startsWith('/watch/providers/'))data={results:[{provider_id:2616,provider_name:'Paramount Plus Essential'},{provider_id:8,provider_name:'Netflix'}]};
  else if(path==='/discover/movie')data={page:1,total_pages:1,results:q.get('release_date.gte')===day(0)?[upcoming]:[movie]};
- else if(path==='/discover/tv')data={page:1,total_pages:1,results:[show]};
+ else if(path==='/discover/tv')data={page:1,total_pages:1,results:[show,batchShow]};
  else if(path==='/search/movie')data={results:[movie]};
  else if(path==='/search/tv')data={results:[show]};
  else if(path.endsWith('/watch/providers'))data={results:{US:{flatrate:[{provider_id:2616,provider_name:'Paramount Plus Essential'}]}}};
  else if(path.endsWith('/release_dates'))data=dates(Number(path.split('/')[2]));
- else if(path.startsWith('/tv/42/season/')){const season=Number(path.split('/').at(-1));data={episodes:season===1?[{episode_number:1,name:'Pilot',air_date:'2020-01-01'},{episode_number:2,name:'Second',air_date:day(-1)}]:[{episode_number:1,name:'New season',air_date:day(7)}]};}
+ else if(path.startsWith('/tv/42/season/')){const season=Number(path.split('/').at(-1));data={episodes:season===1?[{episode_number:1,name:'Pilot',air_date:'2020-01-01'},{episode_number:2,name:'Second',air_date:day(-1)}]:[{episode_number:1,name:'New season',air_date:day(7)},{episode_number:2,name:'Week two',air_date:day(14)}]};}
+ else if(path==='/tv/43/season/2')data={episodes:[1,2,3].map(episode_number=>({episode_number,name:'Chapter '+episode_number,air_date:day(7)}))};
  else if(path.startsWith('/movie/')){const id=Number(path.split('/')[2]);data={...(id===1246049?movie:id===2?upcoming:{id,type:'movie',title:'Other movie',original_language:'en',release_date:'2020-01-01'}),release_dates:dates(id)};}
- else if(path.startsWith('/tv/'))data={...show,id:Number(path.split('/')[2]),external_ids:{imdb_id:'tt0944947'}};
+ else if(path.startsWith('/tv/')){
+  const id=Number(path.split('/')[2]);
+  data=id===42||id===43?{...(id===43?batchShow:show),external_ids:{imdb_id:'tt0944947'}}:{id,name:'Other series',original_language:'en',networks:[]};
+ }
  await route.fulfill({json:data});
 });
 await context.route('**/api/digital-prices?*',r=>r.fulfill({json:{matched:true,status:'listed',provider:'Apple TV Store',currency:'USD',url:'https://tv.apple.com/us/movie/test/umc.test',rent:[{format:'HD',amount:19.99}],buy:[{format:'HD',amount:24.99}],checkedAt:new Date().toISOString()}}));
@@ -77,7 +83,23 @@ await page.getByText('Backup merged with your library.',{exact:true}).waitFor();
 await page.locator('#wl-search').fill('');await page.locator('#wl-type').selectOption('all');assert.equal(await page.locator('#wl-grid .card').count(),2);
 await page.getByRole('button',{name:'UPCOMING',exact:true}).click();
 await page.waitForFunction(()=>!document.getElementById('calendar-refresh').disabled,{},{timeout:15000});
+await page.locator('#calendar-month').selectOption(day(7).slice(0,7));
+await page.locator('#calendar-stage').selectOption('episode');
+const batchEntry=page.locator('.calendar-entry').filter({hasText:'Full Season Series'});
+assert.equal(await batchEntry.count(),1);
+assert.match(await batchEntry.innerText(),/Season 2 · All 3 episodes/);
+assert.match(await page.locator('.calendar-entry').filter({hasText:'S2 E1 · New season'}).innerText(),/Review Series/);
+const monthDownload=page.waitForEvent('download');
+await page.getByRole('button',{name:'Export month',exact:true}).click();
+const monthICS=await readFile(await (await monthDownload).path(),'utf8');
+assert.equal((monthICS.match(/^SUMMARY:Full Season Series/gm)||[]).length,1);
+assert.match(monthICS,/SUMMARY:Full Season Series — Season 2 · All 3 episodes/);
+await batchEntry.getByRole('button',{name:'Full Season Series',exact:true}).click();
+await page.locator('#detail-actions').getByText(/Season 2 · All 3 episodes/).waitFor();
+await page.getByRole('button',{name:'UPCOMING',exact:true}).click();
 await page.locator('#calendar-month').selectOption(day(14).slice(0,7));
+assert.match(await page.locator('.calendar-entry').filter({hasText:'S2 E2 · Week two'}).innerText(),/Review Series/);
+await page.locator('#calendar-stage').selectOption('all');
 await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).waitFor();
 const downloadPromise=page.waitForEvent('download');await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).getByRole('button',{name:'Add to calendar',exact:true}).click();const download=await downloadPromise;assert.equal(download.suggestedFilename(),'streamradar-event.ics');
 await page.locator('.calendar-entry').filter({hasText:'Upcoming Test Film'}).filter({hasText:'Streaming premiere'}).getByRole('button',{name:'Upcoming Test Film',exact:true}).click();await page.getByRole('button',{name:'Add to calendar',exact:true}).waitFor();assert.match(await page.locator('#detail-actions').innerText(),/Streaming premiere/);await page.getByRole('button',{name:'Rate Upcoming Test Film 4.5 of 5 stars',exact:true}).click();await page.getByText('Your rating: 4.5 of 5',{exact:true}).waitFor();assert.equal(await page.locator('#movie-journey').isVisible(),false);await page.getByRole('button',{name:'Release timeline',exact:true}).click();await page.locator('#movie-journey').filter({hasText:'Rent from $19.99'}).waitFor();assert.doesNotMatch(await page.locator('#movie-journey').innerText(),/Buy from/);

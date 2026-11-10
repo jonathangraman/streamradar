@@ -25,17 +25,20 @@ export function isStandup(item) {
 }
 export function isNarrativeMovie(item){return (item.type||item.media_type)==='movie'&&!(item.genre_ids||[]).includes(99)&&!(item.genres||[]).some(g=>g.id===99)&&!isStandup(item);}
 export function episodeLabelsAllowed(item){return !item.catalogService||item.catalogService==='all'||isOriginalSeries(item,item.catalogService);}
+export function seasonDropDate(episodeCount,episodes){
+  if(!Number.isInteger(episodeCount)||episodeCount<2||!Array.isArray(episodes))return null;
+  const numbered=episodes.filter(e=>Number.isInteger(e.episode_number)&&e.episode_number>0);
+  if(numbered.length!==episodeCount||new Set(numbered.map(e=>e.episode_number)).size!==episodeCount)return null;
+  const date=numbered[0].air_date;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||numbered.some(e=>e.episode_number>episodeCount||e.air_date!==date))return null;
+  return date;
+}
 export function releaseMilestone(item,now=today()) {
   if(item?.type!=='tv'||!episodeLabelsAllowed(item))return null;
   const ep=item.last_episode_to_air;
   const season=(item.seasons||[]).find(s=>s.season_number===ep?.season_number);
-  const episodes=item.releaseSeasonEpisodes;
-  if(!season||!Array.isArray(episodes)||episodes.length<2||!Number.isInteger(season.episode_count)||season.episode_count<2)return null;
-  const numbered=episodes.filter(e=>Number.isInteger(e.episode_number)&&e.episode_number>0);
-  if(numbered.length!==season.episode_count||new Set(numbered.map(e=>e.episode_number)).size!==season.episode_count||numbered.some(e=>!/^\d{4}-\d{2}-\d{2}$/.test(e.air_date||'')))return null;
-  const dates=new Set(numbered.map(e=>e.air_date));
-  const date=numbered[0].air_date;
-  if(dates.size===1&&date<=now&&date>=shiftedDate(now,-90))return {text:'ALL EPISODES RELEASED',date,kind:'season'};
+  const date=seasonDropDate(season?.episode_count,item.releaseSeasonEpisodes);
+  if(date&&date<=now&&date>=shiftedDate(now,-90))return {text:'ALL EPISODES RELEASED',date,kind:'season'};
   return null;
 }
 export function contentLabels(item, now=today()) {

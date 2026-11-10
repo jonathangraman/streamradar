@@ -1,5 +1,5 @@
 import {buildReleasePlan,movieWindowEvents,formatDigitalQuote,showMovieJourney} from './release-plan.js';
-import {theaterNewestFirst,validRating,eligibleCalendarSeries,mergeRemembered,setEpisodeProgress,hasNewEpisodes,filterWatchlist,resolvedEvent,movieStreamingEvents,futureMovieQuery,episodeLabelsAllowed,streamingArrival,streamingArrivalQuery,matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
+import {theaterNewestFirst,validRating,eligibleCalendarSeries,mergeRemembered,setEpisodeProgress,hasNewEpisodes,filterWatchlist,resolvedEvent,movieStreamingEvents,futureMovieQuery,episodeLabelsAllowed,streamingArrival,streamingArrivalQuery,matchesOriginalSeries,matchesOriginalMovie,matchesReality,catalogBatchTarget,catalogScanLimit,scheduledVerifiedReleases,browseGenres,matchesBrowseGenre,activeVerifiedOffers,withVerifiedUSOffers,unseenTitles,matchesPickYear,rankRecommendations,pickSubscriptionOffers,upcomingPremiere,upcomingSeasonQuery,isOriginalSeries,keyOf,isEnglish,isNarrativeMovie,pickGenres,pickGenreIds,pickKeyword,matchesPick,parseRoute,normalize,escapeHTML as esc,formatDate,today,shiftedDate,activityDate,recentActivityFirst,contentLabels,seasonDropDate,releaseMilestone,newestFirst,catalogQuery,normalizeZip,theaterURL,calendarEvent,emptyLibrary,migrateLegacy,updateLibrary,commitLibrary,createSequence,serviceDefinitions,providerIds} from './core.js';
 import {legacy} from './legacy-config.js';
 import {mountAccounts,accountState} from './accounts.js';
 import {client as accountClient} from './auth-client.js';
@@ -493,8 +493,25 @@ async function loadStreamingCalendar(reset=true){
      if(item.usSeasonPremiere)addCalendarEntry(item,{...item.usSeasonPremiere,kind:'season',label:'Season '+item.usSeasonPremiere.season+' premiere'});
      const next=item.next_episode_to_air;if(next?.air_date)addCalendarEntry(item,{date:next.air_date,kind:'episode',season:next.season_number,episode:next.episode_number,label:`S${next.season_number} E${next.episode_number} · ${next.name||'Episode'}`,service:affiliation,source});
      const premiere=upcomingPremiere(item);if(premiere)addCalendarEntry(item,{date:premiere.date,kind:'season',season:premiere.season,label:'Season '+premiere.season+' premiere',service:affiliation,source:'TMDB season air date; streaming availability may vary'});
-     const seasons=[...new Set([next?.season_number,premiere?.season])].filter(n=>n>0);
-     for(const season of seasons){const data=await api(`/tv/${item.id}/season/${season}`);if(run!==calendarRun||epoch!==accountState.epoch)return;for(const ep of data.episodes||[])if(ep.episode_number>0)addCalendarEntry(item,{date:ep.air_date,kind:'episode',season,episode:ep.episode_number,label:`S${season} E${ep.episode_number} · ${ep.name||'Episode'}`,service:affiliation,source:ep.releaseSource||source});}
+     const official=item.usSeasonPremiere;
+     const airingToday=(item.seasons||[]).filter(s=>s.air_date===today()).map(s=>s.season_number);
+     const seasons=[...new Set([next?.season_number,premiere?.season,official?.date>=today()?official.season:null,...airingToday])].filter(n=>n>0);
+     for(const season of seasons){
+      const data=await api(`/tv/${item.id}/season/${season}`);
+      if(run!==calendarRun||epoch!==accountState.epoch)return;
+      const episodes=data.episodes||[];
+      const count=item.seasons?.find(s=>s.season_number===season)?.episode_count;
+      const date=seasonDropDate(count,episodes);
+      const nextDisagrees=next?.season_number===season&&next.air_date&&next.air_date!==date;
+      if(date&&!nextDisagrees){
+       const matching=e=>keyOf(e.item)===keyOf(item)&&e.season===season&&e.date===date;
+       calendarEntries=calendarEntries.filter(e=>!matching(e));
+       const officialDrop=official?.season===season&&official.date===date?official:null;
+       addCalendarEntry(item,{date,kind:'season',season,label:`Season ${season} · All ${count} episodes`,service:officialDrop?.service||affiliation,source:officialDrop?.source?officialDrop.source+'; '+source:source});
+       continue;
+      }
+      for(const ep of episodes)if(ep.episode_number>0)addCalendarEntry(item,{date:ep.air_date,kind:'episode',season,episode:ep.episode_number,label:`S${season} E${ep.episode_number} · ${ep.name||'Episode'}`,service:affiliation,source:ep.releaseSource||source});
+     }
     }catch{failed++;}
    });
   }

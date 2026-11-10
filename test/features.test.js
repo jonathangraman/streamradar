@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {emptyLibrary,updateLibrary,setEpisodeProgress,hasNewEpisodes,unseenTitles,filterWatchlist,resolvedEvent,movieStreamingEvents,futureMovieQuery,matchesPick,mergeRemembered,releaseMilestone,calendarEvent} from '../core.js';
+import {emptyLibrary,updateLibrary,setEpisodeProgress,hasNewEpisodes,unseenTitles,filterWatchlist,resolvedEvent,movieStreamingEvents,futureMovieQuery,matchesPick,mergeRemembered,releaseMilestone,seasonDropDate,calendarEvent} from '../core.js';
 const now='2026-10-29',show={id:1,type:'tv',title:'A series',original_language:'en',date:'2020-01-01',last_episode_to_air:{season_number:1,episode_number:2,air_date:'2020-01-02'}};
+
+test('full season drops require every numbered episode to share a known date',()=>{
+ const episodes=[1,2,3].map(episode_number=>({episode_number,air_date:now}));
+ assert.equal(seasonDropDate(3,episodes),now);
+ assert.equal(seasonDropDate(3,[...episodes,{episode_number:0,air_date:'2026-10-28'}]),now);
+ assert.equal(seasonDropDate(3,episodes.slice(0,2)),null);
+ assert.equal(seasonDropDate(3,[...episodes.slice(0,2),{episode_number:4,air_date:now}]),null);
+ assert.equal(seasonDropDate(3,[...episodes.slice(0,2),{episode_number:3,air_date:'2026-11-05'}]),null);
+ assert.equal(seasonDropDate(3,[...episodes.slice(0,2),{episode_number:3,air_date:null}]),null);
+ assert.equal(seasonDropDate(1,episodes.slice(0,1)),null);
+});
 test('seen followed series resurfaces for an unwatched episode and hides when caught up',()=>{
  let library=updateLibrary(emptyLibrary(),'seen',show);
  library=setEpisodeProgress(library,show,[{season_number:1,episode_number:1,air_date:'2020-01-01'}]);assert(hasNewEpisodes(show,library));assert.equal(unseenTitles([show],library).length,1);
